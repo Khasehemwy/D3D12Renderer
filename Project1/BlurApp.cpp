@@ -37,7 +37,7 @@ private:
 	void BuildDescriptorHeaps();
 
 	std::unique_ptr<UploadBuffer<ObjectConstants>> mObjectCB = nullptr;
-	void BuildConstantBuffers();
+	void BuildBuffers();
 
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
 	void BuildRootSignature();
@@ -90,7 +90,7 @@ bool BlurApp::Initialize()
 
 	BuildRootSignature();
 	BuildDescriptorHeaps();
-	BuildConstantBuffers();
+	BuildBuffers();
 	BuildShaderAndInputLayout();
 	BuildObject();
 	BuildPSO();
@@ -117,7 +117,7 @@ void BlurApp::Update(const GameTimer& gt)
 	ObjectConstants objConstants;
 	XMStoreFloat4x4(&objConstants.world, XMMatrixTranspose(world));
 	XMStoreFloat4x4(&objConstants.viewProj, XMMatrixTranspose(viewProj));
-	mObjectCB->CopyData(0, objConstants);
+	currObjectCB->CopyData(0, objConstants);
 }
 
 void BlurApp::Draw(const GameTimer& gt)
@@ -139,16 +139,16 @@ void BlurApp::Draw(const GameTimer& gt)
 
 	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-
 	mCommandList->IASetVertexBuffers(0, 1, &mBoxGeo->VertexBufferView());
 	mCommandList->IASetIndexBuffer(&mBoxGeo->IndexBufferView());
 	mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	mCommandList->SetGraphicsRootDescriptorTable(0, mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+	auto objectCB = ObjectCB->Resource();
+	D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress();
+
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+
+	mCommandList->SetGraphicsRootConstantBufferView(0, objCBAddress);
 
 	mCommandList->DrawIndexedInstanced(
 		mBoxGeo->DrawArgs["object"].IndexCount,
@@ -194,34 +194,18 @@ void BlurApp::BuildDescriptorHeaps()
 	);
 }
 
-void BlurApp::BuildConstantBuffers()
+void BlurApp::BuildBuffers()
 {
-	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 3, true);
-
-	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = mObjectCB->Resource()->GetGPUVirtualAddress();
-	int boxCBufIndex = 0;
-	cbAddress += boxCBufIndex * objCBByteSize;
-
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-	cbvDesc.BufferLocation = cbAddress;
-	cbvDesc.SizeInBytes = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-
-	md3dDevice->CreateConstantBufferView(
-		&cbvDesc,
-		mCbvHeap->GetCPUDescriptorHandleForHeapStart()
-	);
+	ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 1, 1);
 }
 
 void BlurApp::BuildRootSignature()
 {
-	CD3DX12_ROOT_PARAMETER slotRootParameter[1];
-	CD3DX12_DESCRIPTOR_RANGE cbvTable;
-	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
-	slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable);
+	CD3DX12_ROOT_PARAMETER slotRootParameter[2];
+	slotRootParameter[0].InitAsConstantBufferView(0);
+	slotRootParameter[1].InitAsConstantBufferView(1);
 
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, slotRootParameter, 0, nullptr,
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, slotRootParameter, 0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	ComPtr<ID3DBlob> serializedRootSig = nullptr;
