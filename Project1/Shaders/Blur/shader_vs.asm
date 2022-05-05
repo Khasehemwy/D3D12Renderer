@@ -57,7 +57,7 @@ dcl_temps 3
 //   o1.x <- <VS return value>.color.x; o1.y <- <VS return value>.color.y; o1.z <- <VS return value>.color.z; o1.w <- <VS return value>.color.w; 
 //   o0.x <- <VS return value>.pos.x; o0.y <- <VS return value>.pos.y; o0.z <- <VS return value>.pos.z; o0.w <- <VS return value>.pos.w
 //
-#line 25 "E:\Projects\Project1\Project1\Shaders\Blur\shader.hlsl"
+#line 28 "E:\Projects\Project1\Project1\Shaders\Blur\shader.hlsl"
 mov r0.xyz, v0.xyzx
 mov r0.w, l(1.000000)
 dp4 r1.x, r0.xyzw, cb0[0].xyzw
@@ -69,13 +69,13 @@ dp4 r0.y, r1.xyzw, cb0[5].xyzw  // r0.y <- vout.pos.y
 dp4 r0.z, r1.xyzw, cb0[6].xyzw  // r0.z <- vout.pos.z
 dp4 r0.w, r1.xyzw, cb0[7].xyzw  // r0.w <- vout.pos.w
 
-#line 26
+#line 29
 mov r1.xyzw, v1.xyzw  // r1.x <- vout.color.x; r1.y <- vout.color.y; r1.z <- vout.color.z; r1.w <- vout.color.w
 
-#line 27
+#line 30
 mov r2.xy, v2.xyxx  // r2.x <- vout.tex.x; r2.y <- vout.tex.y
 
-#line 29
+#line 32
 mov o0.xyzw, r0.xyzw
 mov o1.xyzw, r1.xyzw
 mov o2.xy, r2.xyxx

@@ -1,3 +1,6 @@
+Texture2D    gTex : register(t0);
+SamplerState gSampler  : register(s0);
+
 cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
@@ -31,5 +34,9 @@ VertexOut VS(VertexIn vin)
 
 float4 PS(VertexOut pin) : SV_TARGET
 {
-    return float4(pin.tex.x,pin.tex.y,1,1);
+    float4 color;
+    color = gTex.Sample(gSampler, pin.tex);
+    color.a = 1;
+    //color = pin.color;
+    return color;
 }
