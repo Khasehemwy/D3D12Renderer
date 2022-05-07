@@ -54,6 +54,9 @@
     <ClCompile Include="BlurApp.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="RenderTexture.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Common\Camera.h">
@@ -86,9 +89,15 @@
     <ClInclude Include="MyApp.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="RenderTexture.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Shaders\Blur\shader.hlsl">
+      <Filter>资源文件</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\Blur\blur.hlsl">
       <Filter>资源文件</Filter>
     </FxCompile>
   </ItemGroup>
