@@ -222,12 +222,6 @@ void BlurApp::DrawBlurToRenderTex(const GameTimer& gt, ID3D12Resource* input)
 	));
 
 	//render
-	//mDirectCmdListAlloc->Reset();
-
-	//mCommandList->Reset(mDirectCmdListAlloc.Get(), mPSOs["blur"].Get());
-	//mCommandList->RSSetViewports(1, &mScreenViewport);
-	//mCommandList->RSSetScissorRects(1, &mScissorRect);
-
 	mCommandList->SetPipelineState(mPSOs["blur"].Get());
 
 	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
@@ -348,39 +342,64 @@ void BlurApp::BuildBuffers()
 
 void BlurApp::BuildRootSignature()
 {
-	CD3DX12_DESCRIPTOR_RANGE texTable;
-	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+	{
+		CD3DX12_DESCRIPTOR_RANGE texTable;
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 
-	CD3DX12_ROOT_PARAMETER slotRootParameter[2];
-	slotRootParameter[1].InitAsConstantBufferView(0);
-	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+		CD3DX12_ROOT_PARAMETER slotRootParameter[2];
+		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+		slotRootParameter[1].InitAsConstantBufferView(0);
 
-	auto staticSamplers = GetStaticSamplers();
+		auto staticSamplers = GetStaticSamplers();
 
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
-		sizeof(slotRootParameter) / sizeof(CD3DX12_ROOT_PARAMETER),
-		slotRootParameter, 
-		(UINT)staticSamplers.size(), staticSamplers.data(),
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
+			sizeof(slotRootParameter) / sizeof(CD3DX12_ROOT_PARAMETER),
+			slotRootParameter,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-	ComPtr<ID3DBlob> serializedRootSig = nullptr;
-	ComPtr<ID3DBlob> errorBlob = nullptr;
-	HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+		ComPtr<ID3DBlob> serializedRootSig = nullptr;
+		ComPtr<ID3DBlob> errorBlob = nullptr;
+		HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
 
-	md3dDevice->CreateRootSignature(
-		0,
-		serializedRootSig->GetBufferPointer(),
-		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(&mRootSignature)
-	);
+		md3dDevice->CreateRootSignature(
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(&mRootSignature)
+		);
+	};
 
-	md3dDevice->CreateRootSignature(
-		0,
-		serializedRootSig->GetBufferPointer(),
-		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(&mRootSignatureBlur)
-	);
+
+	//blur
+	{
+		CD3DX12_DESCRIPTOR_RANGE texTable;
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+
+		CD3DX12_ROOT_PARAMETER slotRootParameter[1];
+		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+
+		auto staticSamplers = GetStaticSamplers();
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
+			sizeof(slotRootParameter) / sizeof(CD3DX12_ROOT_PARAMETER),
+			slotRootParameter,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		ComPtr<ID3DBlob> serializedRootSig = nullptr;
+		ComPtr<ID3DBlob> errorBlob = nullptr;
+		HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+
+		md3dDevice->CreateRootSignature(
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(&mRootSignatureBlur)
+		);
+	}
 }
 
 void BlurApp::BuildShaderAndInputLayout()

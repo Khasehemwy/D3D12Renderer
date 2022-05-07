@@ -100,5 +100,8 @@
     <FxCompile Include="Shaders\Blur\blur.hlsl">
       <Filter>资源文件</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\Blur\blur_cs.hlsl">
+      <Filter>资源文件</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

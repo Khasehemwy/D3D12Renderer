@@ -1,23 +1,15 @@
 Texture2D    gTex : register(t0);
 SamplerState gSampler  : register(s0);
 
-cbuffer cbPerObject : register(b0)
-{
-    float4x4 gWorld;
-    float4x4 gViewProj;
-};
-
 struct VertexIn
 {
     float3 pos : POSITION;
-    float4 color : COLOR;
     float2 tex : TEXCOORD;
 };
 
 struct VertexOut
 {
     float4 pos : SV_POSITION;
-    float4 color : COLOR;
     float2 tex : TEXCOORD;
 };
 
@@ -26,7 +18,6 @@ VertexOut VS(VertexIn vin)
     VertexOut vout;
 
     vout.pos = float4(vin.pos.xy, 0, 1);
-    vout.color = vin.color;
     vout.tex = vin.tex;
 
     return vout;
