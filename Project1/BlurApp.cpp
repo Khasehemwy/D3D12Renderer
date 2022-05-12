@@ -28,16 +28,20 @@ public:
 
 	virtual void Update(const GameTimer& gt)override;
 	virtual void Draw(const GameTimer& gt)override;
+	virtual void OnResize()override;
 private:
 	void DrawBlurToRenderTex(const GameTimer& gt, ID3D12Resource* input);
 
 	std::unique_ptr<RenderTexture> renderTex = nullptr;
+	std::unique_ptr<RenderTexture> renderTexOut = nullptr;
 
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 	void LoadTextures();
 
 	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
 	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeapBlur = nullptr;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE mBlurGpuSrv;
+	CD3DX12_GPU_DESCRIPTOR_HANDLE mBlurGpuUav;
 	void BuildDescriptorHeaps();
 
 	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
@@ -94,7 +98,12 @@ bool BlurApp::Initialize()
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
 		DXGI_FORMAT_R8G8B8A8_UNORM);
+	renderTexOut = std::make_unique<RenderTexture>(
+		md3dDevice.Get(),
+		mClientWidth, mClientHeight,
+		DXGI_FORMAT_R8G8B8A8_UNORM);
 
+	mCbvSrvUavDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr);
 
 	LoadTextures();
@@ -174,6 +183,16 @@ void BlurApp::Draw(const GameTimer& gt)
 
 	DrawBlurToRenderTex(gt, CurrentBackBuffer());
 
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST));
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTexOut->Output(),
+		D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_SOURCE));
+
+	mCommandList->CopyResource(CurrentBackBuffer(), renderTexOut->Output());
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTexOut->Output(),
+		D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_GENERIC_READ));
+
 	//copy render tex to back buffer
 	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 	//	D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST));
@@ -183,7 +202,7 @@ void BlurApp::Draw(const GameTimer& gt)
 	//end
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT));
 	mCommandList->Close();
 
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
@@ -193,6 +212,16 @@ void BlurApp::Draw(const GameTimer& gt)
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
 
 	FlushCommandQueue();
+}
+
+void BlurApp::OnResize()
+{
+	MyApp::OnResize();
+
+	if (renderTex != nullptr) {
+		renderTex->OnResize(mClientWidth, mClientHeight);
+		renderTexOut->OnResize(mClientWidth, mClientHeight);
+	}
 }
 
 void BlurApp::DrawBlurToRenderTex(const GameTimer& gt, ID3D12Resource* input)
@@ -215,92 +244,110 @@ void BlurApp::DrawBlurToRenderTex(const GameTimer& gt, ID3D12Resource* input)
 		D3D12_RESOURCE_STATE_COPY_SOURCE,
 		D3D12_RESOURCE_STATE_RENDER_TARGET
 	));
+
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
 		renderTex->Output(),
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		D3D12_RESOURCE_STATE_GENERIC_READ
 	));
-
-	//render
-	mCommandList->SetPipelineState(mPSOs["blur"].Get());
-
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
-	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
-
-	mCommandList->IASetVertexBuffers(0, 1, &mBoxGeo->VertexBufferView());
-	mCommandList->IASetIndexBuffer(&mBoxGeo->IndexBufferView());
-	mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	//create heap
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 1;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeapBlur));
-
-	auto tex = renderTex->Output();
-
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = tex->GetDesc().Format;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MostDetailedMip = 0;
-	srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
-	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptorBlur(mSrvDescriptorHeapBlur->GetCPUDescriptorHandleForHeapStart());
-	md3dDevice->CreateShaderResourceView(tex, &srvDesc, hDescriptorBlur);
-	//end
-
-
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeapBlur.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-	auto objectCB = ObjectCB->Resource();
-	D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress();
-
-	mCommandList->SetGraphicsRootSignature(mRootSignatureBlur.Get());
-
-	mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(mSrvDescriptorHeapBlur->GetGPUDescriptorHandleForHeapStart());
-	mCommandList->SetGraphicsRootDescriptorTable(0, texHandle);
-
-	mCommandList->DrawIndexedInstanced(
-		mBoxGeo->DrawArgs["object"].IndexCount,
-		1, 0, 0, 0
-	);
-
-
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		input,
-		D3D12_RESOURCE_STATE_RENDER_TARGET,
-		D3D12_RESOURCE_STATE_COPY_DEST
-	));
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		renderTex->Output(),
+		renderTexOut->Output(),
 		D3D12_RESOURCE_STATE_GENERIC_READ,
-		D3D12_RESOURCE_STATE_COPY_SOURCE
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS
 	));
 
-	//mCommandList->CopyResource(CurrentBackBuffer(), renderTex->Output());
+	//render use compute shader
+	mCommandList->SetPipelineState(mPSOs["blur"].Get());
+	mCommandList->SetComputeRootSignature(mRootSignatureBlur.Get());
+	mCommandList->SetComputeRootDescriptorTable(0, mBlurGpuSrv);
+	mCommandList->SetComputeRootDescriptorTable(1, mBlurGpuUav);
 
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		input,
-		D3D12_RESOURCE_STATE_COPY_DEST,
-		D3D12_RESOURCE_STATE_RENDER_TARGET
-	));
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-		renderTex->Output(),
-		D3D12_RESOURCE_STATE_COPY_SOURCE,
-		D3D12_RESOURCE_STATE_COMMON
-	));
+	UINT numGroupX = (UINT)ceilf(mClientWidth / 256.0f);
+	mCommandList->Dispatch(numGroupX, mClientHeight, 1);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTexOut->Output(),
+		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ));
+
+	////render
+	//mCommandList->SetPipelineState(mPSOs["blur"].Get());
+
+	//mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
+	//mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	//mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+
+	//mCommandList->IASetVertexBuffers(0, 1, &mBoxGeo->VertexBufferView());
+	//mCommandList->IASetIndexBuffer(&mBoxGeo->IndexBufferView());
+	//mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	////create heap
+	//D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	//srvHeapDesc.NumDescriptors = 1;
+	//srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	//srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	//md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeapBlur));
+
+	//auto tex = renderTex->Output();
+
+	//D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	//srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	//srvDesc.Format = tex->GetDesc().Format;
+	//srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	//srvDesc.Texture2D.MostDetailedMip = 0;
+	//srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
+	//srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+	//CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptorBlur(mSrvDescriptorHeapBlur->GetCPUDescriptorHandleForHeapStart());
+	//md3dDevice->CreateShaderResourceView(tex, &srvDesc, hDescriptorBlur);
+	////end
+
+
+	//ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeapBlur.Get() };
+	//mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	//auto objectCB = ObjectCB->Resource();
+	//D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress();
+
+	//mCommandList->SetGraphicsRootSignature(mRootSignatureBlur.Get());
+
+	//mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
+	//CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(mSrvDescriptorHeapBlur->GetGPUDescriptorHandleForHeapStart());
+	//mCommandList->SetGraphicsRootDescriptorTable(0, texHandle);
+
+	//mCommandList->DrawIndexedInstanced(
+	//	mBoxGeo->DrawArgs["object"].IndexCount,
+	//	1, 0, 0, 0
+	//);
+
+
+	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	//	input,
+	//	D3D12_RESOURCE_STATE_RENDER_TARGET,
+	//	D3D12_RESOURCE_STATE_COPY_DEST
+	//));
+	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	//	renderTex->Output(),
+	//	D3D12_RESOURCE_STATE_GENERIC_READ,
+	//	D3D12_RESOURCE_STATE_COPY_SOURCE
+	//));
+
+	////mCommandList->CopyResource(CurrentBackBuffer(), renderTex->Output());
+
+	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	//	input,
+	//	D3D12_RESOURCE_STATE_COPY_DEST,
+	//	D3D12_RESOURCE_STATE_RENDER_TARGET
+	//));
+	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
+	//	renderTex->Output(),
+	//	D3D12_RESOURCE_STATE_COPY_SOURCE,
+	//	D3D12_RESOURCE_STATE_COMMON
+	//));
 }
 
 void BlurApp::LoadTextures()
 {
 	auto tex = std::make_unique<Texture>();
 	tex->Name = "teapot512";
-	tex->Filename = L"Data/teapot512.dds";
+	tex->Filename = L"E:\\Projects\\Project1\\Project1\\Data\\teapot512.dds";
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
 		mCommandList.Get(), tex->Filename.c_str(),
 		tex->Resource, tex->UploadHeap));
@@ -311,7 +358,7 @@ void BlurApp::LoadTextures()
 void BlurApp::BuildDescriptorHeaps()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 1;
+	srvHeapDesc.NumDescriptors = 2;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap));
@@ -330,9 +377,34 @@ void BlurApp::BuildDescriptorHeaps()
 
 	md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
 
-	md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeapBlur));
-	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptorBlur(mSrvDescriptorHeapBlur->GetCPUDescriptorHandleForHeapStart());
-	md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptorBlur);
+	{
+		CD3DX12_CPU_DESCRIPTOR_HANDLE mBlurCpuSrv
+			= CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), 0, mCbvSrvUavDescriptorSize);
+		CD3DX12_CPU_DESCRIPTOR_HANDLE mBlurCpuUav = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+			mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
+			1, mCbvSrvUavDescriptorSize);
+
+		mBlurGpuSrv
+			= CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), 0, mCbvSrvUavDescriptorSize);
+		mBlurGpuUav = CD3DX12_GPU_DESCRIPTOR_HANDLE(
+			mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
+			1, mCbvSrvUavDescriptorSize);
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = 1;
+
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+		uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		uavDesc.Texture2D.MipSlice = 0;
+
+		md3dDevice->CreateShaderResourceView(renderTex->Output(), &srvDesc, mBlurCpuSrv);
+		md3dDevice->CreateUnorderedAccessView(renderTexOut->Output(), nullptr, &uavDesc, mBlurCpuUav);
+	}
 }
 
 void BlurApp::BuildBuffers()
@@ -374,18 +446,19 @@ void BlurApp::BuildRootSignature()
 
 	//blur
 	{
-		CD3DX12_DESCRIPTOR_RANGE texTable;
-		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		CD3DX12_DESCRIPTOR_RANGE srvTable;
+		srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+		CD3DX12_DESCRIPTOR_RANGE uavTable;
+		uavTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
 
-		CD3DX12_ROOT_PARAMETER slotRootParameter[1];
-		slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
-
-		auto staticSamplers = GetStaticSamplers();
+		CD3DX12_ROOT_PARAMETER slotRootParameter[2];
+		slotRootParameter[0].InitAsDescriptorTable(1, &srvTable);
+		slotRootParameter[1].InitAsDescriptorTable(1, &uavTable);
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
 			sizeof(slotRootParameter) / sizeof(CD3DX12_ROOT_PARAMETER),
 			slotRootParameter,
-			(UINT)staticSamplers.size(), staticSamplers.data(),
+			0, nullptr,
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 		ComPtr<ID3DBlob> serializedRootSig = nullptr;
@@ -397,7 +470,7 @@ void BlurApp::BuildRootSignature()
 			0,
 			serializedRootSig->GetBufferPointer(),
 			serializedRootSig->GetBufferSize(),
-			IID_PPV_ARGS(&mRootSignatureBlur)
+			IID_PPV_ARGS(mRootSignatureBlur.GetAddressOf())
 		);
 	}
 }
@@ -410,6 +483,8 @@ void BlurApp::BuildShaderAndInputLayout()
 	mShaders["defaultPS"] = d3dUtil::LoadBinary(L"Shaders\\Blur\\shader_ps.cso");
 	mShaders["blurVS"] = d3dUtil::LoadBinary(L"Shaders\\Blur\\blur_vs.cso");
 	mShaders["blurPS"] = d3dUtil::LoadBinary(L"Shaders\\Blur\\blur_ps.cso");
+
+	mShaders["blurCS"] = d3dUtil::LoadBinary(L"Shaders\\Blur\\blur_cs.cso");
 
 	mInputLayout =
 	{
@@ -491,15 +566,13 @@ void BlurApp::BuildPSOs()
 	md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSOs["default"]));
 
 
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC blurPsoDesc = psoDesc;
+	D3D12_COMPUTE_PIPELINE_STATE_DESC blurPsoDesc;
+	ZeroMemory(&blurPsoDesc, sizeof(D3D12_COMPUTE_PIPELINE_STATE_DESC));
 	blurPsoDesc.pRootSignature = mRootSignatureBlur.Get();
-	blurPsoDesc.VS = {
-		reinterpret_cast<BYTE*>(mShaders["blurVS"]->GetBufferPointer()),
-		mShaders["blurVS"]->GetBufferSize()
+	blurPsoDesc.CS = {
+		reinterpret_cast<BYTE*>(mShaders["blurCS"]->GetBufferPointer()),
+		mShaders["blurCS"]->GetBufferSize()
 	};
-	blurPsoDesc.PS = {
-		reinterpret_cast<BYTE*>(mShaders["blurPS"]->GetBufferPointer()),
-		mShaders["blurPS"]->GetBufferSize()
-	};
-	md3dDevice->CreateGraphicsPipelineState(&blurPsoDesc, IID_PPV_ARGS(&mPSOs["blur"]));
+	blurPsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+	md3dDevice->CreateComputePipelineState(&blurPsoDesc, IID_PPV_ARGS(&mPSOs["blur"]));
 }
