@@ -53,10 +53,10 @@ mov r0.y, vThreadIDInGroup.x  // r0.y <- x
 mov r0.z, l(10)  // r0.z <- blurNum
 
 #line 18
-mov r0.w, l(0)  // r0.w <- totBlur
+mov r0.w, l(1)  // r0.w <- totBlur
 
 #line 19
-mov r3.x, l(0)  // r3.x <- i
+mov r3.x, l(1)  // r3.x <- i
 mov r4.xyzw, r2.xyzw  // r4.x <- color.x; r4.y <- color.y; r4.z <- color.z; r4.w <- color.w
 mov r3.y, r0.w  // r3.y <- totBlur
 mov r3.z, r3.x  // r3.z <- i

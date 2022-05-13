@@ -15,8 +15,8 @@ void CS(int3 groupThreadID : SV_GroupThreadID,
 	int y = groupThreadID.y;
 
 	int blurNum = 10;
-	int totBlur = 0;
-	for (int i = 0; i < blurNum; i++) {
+	int totBlur = 1;
+	for (int i = 1; i < blurNum; i++) {
 		if (x + i >= N)continue;
 		totBlur++;
 		color += gTex[int2(dispatch_x + i, dispatch_y)];
