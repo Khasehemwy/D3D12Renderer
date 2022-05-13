@@ -38,8 +38,7 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 	void LoadTextures();
 
-	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeap = nullptr;
-	ComPtr<ID3D12DescriptorHeap> mSrvDescriptorHeapBlur = nullptr;
+	ComPtr<ID3D12DescriptorHeap> mSrvUavDescriptorHeap = nullptr;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mBlurGpuSrv;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mBlurGpuUav;
 	void BuildDescriptorHeaps();
@@ -163,7 +162,7 @@ void BlurApp::Draw(const GameTimer& gt)
 	mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeap.Get() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvUavDescriptorHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 	auto objectCB = ObjectCB->Resource();
@@ -172,7 +171,7 @@ void BlurApp::Draw(const GameTimer& gt)
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
 	mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+	CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvUavDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 	mCommandList->SetGraphicsRootDescriptorTable(0, tex);
 
 	mCommandList->DrawIndexedInstanced(
@@ -192,17 +191,9 @@ void BlurApp::Draw(const GameTimer& gt)
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTexOut->Output(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_GENERIC_READ));
-
-	//copy render tex to back buffer
-	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-	//	D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST));
-	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTex->Output(),
-	//	D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_SOURCE));
-	//mCommandList->CopyResource(CurrentBackBuffer(), renderTex->Output());
-	//end
-
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT));
+
 	mCommandList->Close();
 
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
@@ -267,80 +258,6 @@ void BlurApp::DrawBlurToRenderTex(const GameTimer& gt, ID3D12Resource* input)
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(renderTexOut->Output(),
 		D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ));
-
-	////render
-	//mCommandList->SetPipelineState(mPSOs["blur"].Get());
-
-	//mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
-	//mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-	//mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
-
-	//mCommandList->IASetVertexBuffers(0, 1, &mBoxGeo->VertexBufferView());
-	//mCommandList->IASetIndexBuffer(&mBoxGeo->IndexBufferView());
-	//mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-	////create heap
-	//D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	//srvHeapDesc.NumDescriptors = 1;
-	//srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	//srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	//md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeapBlur));
-
-	//auto tex = renderTex->Output();
-
-	//D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	//srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	//srvDesc.Format = tex->GetDesc().Format;
-	//srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	//srvDesc.Texture2D.MostDetailedMip = 0;
-	//srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
-	//srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-	//CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptorBlur(mSrvDescriptorHeapBlur->GetCPUDescriptorHandleForHeapStart());
-	//md3dDevice->CreateShaderResourceView(tex, &srvDesc, hDescriptorBlur);
-	////end
-
-
-	//ID3D12DescriptorHeap* descriptorHeaps[] = { mSrvDescriptorHeapBlur.Get() };
-	//mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-	//auto objectCB = ObjectCB->Resource();
-	//D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress();
-
-	//mCommandList->SetGraphicsRootSignature(mRootSignatureBlur.Get());
-
-	//mCommandList->SetGraphicsRootConstantBufferView(1, objCBAddress);
-	//CD3DX12_GPU_DESCRIPTOR_HANDLE texHandle(mSrvDescriptorHeapBlur->GetGPUDescriptorHandleForHeapStart());
-	//mCommandList->SetGraphicsRootDescriptorTable(0, texHandle);
-
-	//mCommandList->DrawIndexedInstanced(
-	//	mBoxGeo->DrawArgs["object"].IndexCount,
-	//	1, 0, 0, 0
-	//);
-
-
-	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-	//	input,
-	//	D3D12_RESOURCE_STATE_RENDER_TARGET,
-	//	D3D12_RESOURCE_STATE_COPY_DEST
-	//));
-	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-	//	renderTex->Output(),
-	//	D3D12_RESOURCE_STATE_GENERIC_READ,
-	//	D3D12_RESOURCE_STATE_COPY_SOURCE
-	//));
-
-	////mCommandList->CopyResource(CurrentBackBuffer(), renderTex->Output());
-
-	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-	//	input,
-	//	D3D12_RESOURCE_STATE_COPY_DEST,
-	//	D3D12_RESOURCE_STATE_RENDER_TARGET
-	//));
-	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(
-	//	renderTex->Output(),
-	//	D3D12_RESOURCE_STATE_COPY_SOURCE,
-	//	D3D12_RESOURCE_STATE_COMMON
-	//));
 }
 
 void BlurApp::LoadTextures()
@@ -357,38 +274,38 @@ void BlurApp::LoadTextures()
 
 void BlurApp::BuildDescriptorHeaps()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 2;
-	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-	md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvDescriptorHeap));
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+		srvHeapDesc.NumDescriptors = 1 + 2;
+		srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvUavDescriptorHeap));
 
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
-	auto tex = mTextures["teapot512"]->Resource;
+		CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvUavDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
+		auto tex = mTextures["teapot512"]->Resource;
 
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = tex->GetDesc().Format;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MostDetailedMip = 0;
-	srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
-	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = tex->GetDesc().Format;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = tex->GetDesc().MipLevels;
+		srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 
-	md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
+		md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, hDescriptor);
+	}
 
 	{
 		CD3DX12_CPU_DESCRIPTOR_HANDLE mBlurCpuSrv
-			= CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), 0, mCbvSrvUavDescriptorSize);
-		CD3DX12_CPU_DESCRIPTOR_HANDLE mBlurCpuUav = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-			mSrvDescriptorHeap->GetCPUDescriptorHandleForHeapStart(),
-			1, mCbvSrvUavDescriptorSize);
+			= CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvUavDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), 1, mCbvSrvUavDescriptorSize);
+		CD3DX12_CPU_DESCRIPTOR_HANDLE mBlurCpuUav
+			= CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvUavDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), 2, mCbvSrvUavDescriptorSize);
 
 		mBlurGpuSrv
-			= CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), 0, mCbvSrvUavDescriptorSize);
-		mBlurGpuUav = CD3DX12_GPU_DESCRIPTOR_HANDLE(
-			mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart(),
-			1, mCbvSrvUavDescriptorSize);
+			= CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvUavDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), 1, mCbvSrvUavDescriptorSize);
+		mBlurGpuUav
+			= CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvUavDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), 2, mCbvSrvUavDescriptorSize);
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;

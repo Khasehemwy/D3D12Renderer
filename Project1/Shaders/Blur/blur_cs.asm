@@ -26,9 +26,8 @@ cs_5_0
 dcl_globalFlags refactoringAllowed | skipOptimization
 dcl_resource_texture2d (float,float,float,float) t0
 dcl_uav_typed_texture2d (float,float,float,float) u0
-dcl_input vThreadIDInGroup.x
 dcl_input vThreadID.xy
-dcl_temps 6
+dcl_temps 3
 dcl_thread_group 256, 1, 1
 //
 // Initial variable locations:
@@ -46,56 +45,10 @@ mov r0.y, r1.w
 mov r0.zw, l(0,0,0,0)
 ld_indexable(texture2d)(float,float,float,float) r2.xyzw, r0.xyzw, t0.xyzw  // r2.x <- color.x; r2.y <- color.y; r2.z <- color.z; r2.w <- color.w
 
-#line 14
-mov r0.y, vThreadIDInGroup.x  // r0.y <- x
-
-#line 17
-mov r0.z, l(5)  // r0.z <- blurNum
-
-#line 18
-mov r0.w, l(0)  // r0.w <- totBlur
-
-#line 19
-mov r3.x, l(0)  // r3.x <- i
-mov r4.xyzw, r2.xyzw  // r4.x <- color.x; r4.y <- color.y; r4.z <- color.z; r4.w <- color.w
-mov r3.y, r0.w  // r3.y <- totBlur
-mov r3.z, r3.x  // r3.z <- i
-loop 
-  ilt r3.w, r3.z, r0.z
-  breakc_z r3.w
-
-#line 20
-  iadd r3.w, r0.y, r3.z
-  ige r3.w, r3.w, l(256)
-  if_nz r3.w
-    iadd r3.z, r3.z, l(1)
-    continue 
-  endif 
-
-#line 21
-  iadd r3.y, r3.y, l(1)
-
-#line 22
-  iadd r5.x, r0.x, r3.z
-  mov r5.y, r1.w
-  mov r5.zw, l(0,0,0,0)
-  ld_indexable(texture2d)(float,float,float,float) r5.xyzw, r5.xyzw, t0.xyzw
-  add r4.xyzw, r4.xyzw, r5.xyzw
-
-#line 19
-  iadd r3.z, r3.z, l(1)
-
-#line 23
-endloop 
-
-#line 24
-itof r2.xyzw, r3.yyyy
-div r2.xyzw, r4.xyzw, r2.xyzw  // r2.x <- color.x; r2.y <- color.y; r2.z <- color.z; r2.w <- color.w
-
 #line 26
 mov r1.x, r0.x
 store_uav_typed u0.xyzw, r1.xyzw, r2.xyzw
 
-#line 28
+#line 27
 ret 
-// Approximately 34 instruction slots used
+// Approximately 8 instruction slots used

@@ -37,6 +37,6 @@ float4 PS(VertexOut pin) : SV_TARGET
     float4 color;
     color = gTex.Sample(gSampler, pin.tex);
     color.a = 1;
-    //color = pin.color;
+    //color = float4(1, 0, 0, 1);
     return color;
 }
