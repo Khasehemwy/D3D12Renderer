@@ -41,6 +41,8 @@ private:
 	ComPtr<ID3D12DescriptorHeap> mSrvUavDescriptorHeap = nullptr;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mBlurGpuSrv;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mBlurGpuUav;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE mBlurCpuSrv;
+	CD3DX12_CPU_DESCRIPTOR_HANDLE mBlurCpuUav;
 	void BuildDescriptorHeaps();
 
 	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
@@ -211,6 +213,8 @@ void BlurApp::OnResize()
 
 	if (renderTex != nullptr) {
 		renderTex->OnResize(mClientWidth, mClientHeight);
+	}
+	if (renderTexOut != nullptr) {
 		renderTexOut->OnResize(mClientWidth, mClientHeight);
 	}
 }
@@ -250,8 +254,27 @@ void BlurApp::DrawBlurToRenderTex(const GameTimer& gt, ID3D12Resource* input)
 	//render use compute shader
 	mCommandList->SetPipelineState(mPSOs["blur"].Get());
 	mCommandList->SetComputeRootSignature(mRootSignatureBlur.Get());
+
 	mCommandList->SetComputeRootDescriptorTable(0, mBlurGpuSrv);
 	mCommandList->SetComputeRootDescriptorTable(1, mBlurGpuUav);
+
+	{
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = 1;
+
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+		uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		uavDesc.Texture2D.MipSlice = 0;
+
+		md3dDevice->CreateShaderResourceView(renderTex->Output(), &srvDesc, mBlurCpuSrv);
+		md3dDevice->CreateUnorderedAccessView(renderTexOut->Output(), nullptr, &uavDesc, mBlurCpuUav);
+	}
+
 
 	UINT numGroupX = (UINT)ceilf(mClientWidth / 256.0f);
 	mCommandList->Dispatch(numGroupX, mClientHeight, 1);
@@ -297,30 +320,15 @@ void BlurApp::BuildDescriptorHeaps()
 	}
 
 	{
-		CD3DX12_CPU_DESCRIPTOR_HANDLE mBlurCpuSrv
+		mBlurCpuSrv
 			= CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvUavDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), 1, mCbvSrvUavDescriptorSize);
-		CD3DX12_CPU_DESCRIPTOR_HANDLE mBlurCpuUav
+		mBlurCpuUav
 			= CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvUavDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), 2, mCbvSrvUavDescriptorSize);
 
 		mBlurGpuSrv
 			= CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvUavDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), 1, mCbvSrvUavDescriptorSize);
 		mBlurGpuUav
 			= CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvUavDescriptorHeap->GetGPUDescriptorHandleForHeapStart(), 2, mCbvSrvUavDescriptorSize);
-
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MostDetailedMip = 0;
-		srvDesc.Texture2D.MipLevels = 1;
-
-		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-		uavDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-		uavDesc.Texture2D.MipSlice = 0;
-
-		md3dDevice->CreateShaderResourceView(renderTex->Output(), &srvDesc, mBlurCpuSrv);
-		md3dDevice->CreateUnorderedAccessView(renderTexOut->Output(), nullptr, &uavDesc, mBlurCpuUav);
 	}
 }
 
