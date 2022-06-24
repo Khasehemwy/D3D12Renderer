@@ -18,7 +18,7 @@ public:
 	{
 		XMFLOAT4X4 world = MathHelper::Identity4x4();
 		XMFLOAT4X4 viewProj = MathHelper::Identity4x4();
-		XMFLOAT3 eyePos;
+		XMFLOAT3 eyePos = XMFLOAT3(0, 0, 0);
 	};
 
 	TessellationApp(HINSTANCE hInstance);
@@ -107,13 +107,12 @@ void TessellationApp::Update(const GameTimer& gt)
 	XMMATRIX world = XMLoadFloat4x4(&mWorld);
 	XMMATRIX proj = XMLoadFloat4x4(&mProj);
 	XMMATRIX viewProj = XMLoadFloat4x4(&mView) * proj;
-	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
 
 	// Update the constant buffer with the latest worldViewProj matrix.
 	ObjectConstants objConstants;
 	XMStoreFloat4x4(&objConstants.world, XMMatrixTranspose(world));
 	XMStoreFloat4x4(&objConstants.viewProj, XMMatrixTranspose(viewProj));
-	XMStoreFloat3(&objConstants.eyePos, pos);
+	objConstants.eyePos = mEyePos;
 	mObjectCB->CopyData(0, objConstants);
 }
 
@@ -141,9 +140,13 @@ void TessellationApp::Draw(const GameTimer& gt)
 
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
+
+	// ![Tip]: Note that "D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST" replace "D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST"
+
 	mCommandList->IASetVertexBuffers(0, 1, &mBoxGeo->VertexBufferView());
 	mCommandList->IASetIndexBuffer(&mBoxGeo->IndexBufferView());
-	mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	mCommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_4_CONTROL_POINT_PATCHLIST);
+	//mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	mCommandList->SetGraphicsRootDescriptorTable(0, mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 
@@ -181,7 +184,7 @@ void TessellationApp::BuildDescriptorHeaps()
 
 void TessellationApp::BuildConstantBuffers()
 {
-	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 2, true);
+	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 3, true);
 
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 
@@ -239,15 +242,14 @@ void TessellationApp::BuildObject()
 {
 	std::array<Vertex, 4> vertices =
 	{
-		Vertex({ XMFLOAT3(-1.0f, -1.0f, +1.0f) }),
-		Vertex({ XMFLOAT3(+1.0f, -1.0f, +1.0f) }),
-		Vertex({ XMFLOAT3(-1.0f, -1.0f, -1.0f) }),
-		Vertex({ XMFLOAT3(+1.0f, -1.0f, -1.0f) }),
+		Vertex({ XMFLOAT3(-10.0f, -10.0f, +10.0f) }),
+		Vertex({ XMFLOAT3(+10.0f, -10.0f, +10.0f) }),
+		Vertex({ XMFLOAT3(-10.0f, -10.0f, -10.0f) }),
+		Vertex({ XMFLOAT3(+10.0f, -10.0f, -10.0f) }),
 	};
-	std::array<std::uint16_t, 6> indices =
+	std::array<std::uint16_t, 4> indices =
 	{
-		3,2,0,
-		1,3,0
+		0,1,2,3
 	};
 
 	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
@@ -281,36 +283,44 @@ void TessellationApp::BuildObject()
 void TessellationApp::BuildPSO()
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
-	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 
+	//
+	// PSO for opaque objects.
+	//
+	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 	psoDesc.InputLayout = { mInputLayout.data(), (UINT)mInputLayout.size() };
 	psoDesc.pRootSignature = mRootSignature.Get();
-	psoDesc.VS = {
+	psoDesc.VS =
+	{
 		reinterpret_cast<BYTE*>(mvsByteCode->GetBufferPointer()),
 		mvsByteCode->GetBufferSize()
 	};
-	psoDesc.HS = {
+	psoDesc.HS =
+	{
 		reinterpret_cast<BYTE*>(mhsByteCode->GetBufferPointer()),
 		mhsByteCode->GetBufferSize()
-	};	
-	psoDesc.DS = {
+	};
+	psoDesc.DS =
+	{
 		reinterpret_cast<BYTE*>(mdsByteCode->GetBufferPointer()),
 		mdsByteCode->GetBufferSize()
 	};
-	psoDesc.PS = {
+	psoDesc.PS =
+	{
 		reinterpret_cast<BYTE*>(mpsByteCode->GetBufferPointer()),
 		mpsByteCode->GetBufferSize()
-	};	
+	};
 	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_PATCH;
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.RTVFormats[0] = mBackBufferFormat;
 	psoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
 	psoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 	psoDesc.DSVFormat = mDepthStencilFormat;
 
-	md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO));
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO)));
 }
