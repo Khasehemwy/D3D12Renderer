@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="BoxApp.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\Common\Camera.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -42,19 +39,22 @@
     <ClCompile Include="test.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="DrawBoxApp.cpp">
+    <ClCompile Include="App_DrawBox.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="MyApp.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="shapesIn3Frame.cpp">
+    <ClCompile Include="App_shapesIn3Frame.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="BlurApp.cpp">
+    <ClCompile Include="App_Blur.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="RenderTexture.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="App_Tessellation.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
