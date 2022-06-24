@@ -55,14 +55,14 @@ void MyApp::OnMouseMove(WPARAM btnState, int x, int y)
 	else if ((btnState & MK_RBUTTON) != 0)
 	{
 		// Make each pixel correspond to 0.005 unit in the scene.
-		float dx = 0.005f * static_cast<float>(x - mLastMousePos.x);
-		float dy = 0.005f * static_cast<float>(y - mLastMousePos.y);
+		float dx = 0.05f * static_cast<float>(x - mLastMousePos.x);
+		float dy = 0.05f * static_cast<float>(y - mLastMousePos.y);
 
 		// Update the camera radius based on input.
 		mRadius += dx - dy;
 
 		// Restrict the radius.
-		mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
+		//mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
 	}
 
 	mLastMousePos.x = x;
