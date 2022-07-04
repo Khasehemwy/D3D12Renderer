@@ -103,6 +103,7 @@ void DrawBoxApp::Update(const GameTimer& gt)
 	MyApp::Update(gt);
 
 	XMMATRIX world = XMLoadFloat4x4(&mWorld);
+	world = world * XMMatrixTranslation(-1, 0, 0);
 	XMMATRIX proj = XMLoadFloat4x4(&mProj);
 	XMMATRIX viewProj = XMLoadFloat4x4(&mView) * proj;
 
@@ -236,20 +237,23 @@ void DrawBoxApp::BuildObject()
 {
 	std::array<Vertex, 8> vertices =
 	{
-		Vertex({ XMFLOAT3(-1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Green) }),
-		Vertex({ XMFLOAT3(+1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Green) }),
-		Vertex({ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT4(Colors::Green) }),
-		Vertex({ XMFLOAT3(+1.0f, -1.0f, -1.0f), XMFLOAT4(Colors::Green) }),
-		Vertex({ XMFLOAT3(0.0f, +1.0f, 0.0f), XMFLOAT4(Colors::Red) })
+		Vertex({ XMFLOAT3(-1.0f, -1.0f, +1.0f), XMFLOAT4(1,0,0,1) }),
+		Vertex({ XMFLOAT3(+1.0f, -1.0f, +1.0f), XMFLOAT4(1,0,0,1) }),
+		Vertex({ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT4(1,0,0,1) }),
+		Vertex({ XMFLOAT3(+1.0f, -1.0f, -1.0f), XMFLOAT4(1,0,0,1) }),
+		Vertex({ XMFLOAT3(-1.0f, +1.0f, +1.0f), XMFLOAT4(0,0,1,1) }),
+		Vertex({ XMFLOAT3(+1.0f, +1.0f, +1.0f), XMFLOAT4(0,0,1,1) }),
+		Vertex({ XMFLOAT3(-1.0f, +1.0f, -1.0f), XMFLOAT4(0,0,1,1) }),
+		Vertex({ XMFLOAT3(+1.0f, +1.0f, -1.0f), XMFLOAT4(0,0,1,1) }),
 	};
 	std::array<std::uint16_t, 36> indices =
 	{
-		4,3,2,
-		4,1,3,
-		4,0,1,
-		4,2,0,
-		0,2,3,
-		0,3,1
+		2,1,0,2,3,1,//bottom
+		4,5,6,5,7,6,//top
+		6,7,2,7,3,2,//front
+		0,5,4,0,1,5,//back
+		4,6,0,6,2,0,//left
+		7,5,3,5,1,3//right
 	};
 
 	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
