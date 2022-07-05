@@ -31,9 +31,10 @@ public:
 
 	virtual void Update(const GameTimer& gt)override;
 	virtual void Draw(const GameTimer& gt)override;
+	virtual void OnMouseMove(WPARAM btnState, int x, int y)override;
 
 private:
-	const int mMaxInstanceNum = 2 * 5;
+	const int mMaxInstanceNum = 8 * 10 * 10 * 10;
 
 	ComPtr<ID3D12DescriptorHeap> mCbvHeap = nullptr;
 	void BuildDescriptorHeaps();
@@ -177,6 +178,38 @@ void InstancingApp::Draw(const GameTimer& gt)
 	FlushCommandQueue();
 }
 
+void InstancingApp::OnMouseMove(WPARAM btnState, int x, int y)
+{
+	if ((btnState & MK_LBUTTON) != 0)
+	{
+		// Make each pixel correspond to a quarter of a degree.
+		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
+		float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
+
+		// Update angles based on input to orbit camera around box.
+		mTheta -= dx;
+		mPhi -= dy;
+
+		// Restrict the angle mPhi.
+		mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
+	}
+	else if ((btnState & MK_RBUTTON) != 0)
+	{
+		// Make each pixel correspond to 0.005 unit in the scene.
+		float dx = 1.05f * static_cast<float>(x - mLastMousePos.x);
+		float dy = 1.05f * static_cast<float>(y - mLastMousePos.y);
+
+		// Update the camera radius based on input.
+		mRadius += dx - dy;
+
+		// Restrict the radius.
+		//mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
+	}
+
+	mLastMousePos.x = x;
+	mLastMousePos.y = y;
+}
+
 void InstancingApp::BuildDescriptorHeaps()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
@@ -306,13 +339,19 @@ void InstancingApp::BuildObject()
 
 	{
 		float r = 0;
-		for (int i = -mMaxInstanceNum/2; i < mMaxInstanceNum/2; i++) {
-			XMMATRIX worldMatrix = XMMatrixIdentity();
-			worldMatrix = worldMatrix * XMMatrixTranslation(i * 3, 0, 0);
-			XMFLOAT4X4 world;
-			XMStoreFloat4x4(&world, XMMatrixTranspose(worldMatrix));
-			XMFLOAT3 color(r, 0, 0); r += 0.1;
-			mInstanceData.push_back({ world, color });
+		int len = std::cbrt(mMaxInstanceNum / 8);
+		int step = 20;
+		for (int x = -len; x < len; x++) {
+			for (int y = -len; y < len; y++) {
+				for (int z = -len; z < len; z++) {
+					XMMATRIX worldMatrix = XMMatrixIdentity();
+					worldMatrix = worldMatrix * XMMatrixTranslation(x * step, y * step, z * step);
+					XMFLOAT4X4 world;
+					XMStoreFloat4x4(&world, XMMatrixTranspose(worldMatrix));
+					XMFLOAT3 color(r, 0, 0); r += 0.0001;
+					mInstanceData.push_back({ world, color });
+				}
+			}
 		}
 	}
 }
