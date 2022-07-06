@@ -89,7 +89,7 @@ InstancingApp::InstancingApp(HINSTANCE hInstance) :
 
 bool InstancingApp::Initialize()
 {
-	if (!D3DApp::Initialize())return false;
+	if (!MyApp::Initialize())return false;
 
 	mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr);
 

@@ -93,7 +93,7 @@ BlurApp::BlurApp(HINSTANCE hInstance) :
 
 bool BlurApp::Initialize()
 {
-	if (!D3DApp::Initialize())return false;
+	if (!MyApp::Initialize())return false;
 
 	renderTex = std::make_unique<RenderTexture>(
 		md3dDevice.Get(),

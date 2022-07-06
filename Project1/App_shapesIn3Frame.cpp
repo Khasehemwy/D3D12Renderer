@@ -138,7 +138,7 @@ shapesIn3Frame::shapesIn3Frame(HINSTANCE hInstance):
 
 bool shapesIn3Frame::Initialize()
 {
-	if (!D3DApp::Initialize())return false;
+	if (!MyApp::Initialize())return false;
 	mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr);
 
 	BuildRootSignature();

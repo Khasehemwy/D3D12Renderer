@@ -15,6 +15,12 @@ MyApp::MyApp(HINSTANCE hInstance):
 
 }
 
+bool MyApp::Initialize()
+{
+	mCamera.SetPosition(XMFLOAT3(0, 0, -5));
+	return D3DApp::Initialize();
+}
+
 void MyApp::OnResize()
 {
 	D3DApp::OnResize();
@@ -45,47 +51,42 @@ void MyApp::OnMouseMove(WPARAM btnState, int x, int y)
 		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
 		float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
 
-		// Update angles based on input to orbit camera around box.
-		mTheta -= dx;
-		mPhi -= dy;
-
-		// Restrict the angle mPhi.
-		mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
-	}
-	else if ((btnState & MK_RBUTTON) != 0)
-	{
-		// Make each pixel correspond to 0.005 unit in the scene.
-		float dx = 0.05f * static_cast<float>(x - mLastMousePos.x);
-		float dy = 0.05f * static_cast<float>(y - mLastMousePos.y);
-
-		// Update the camera radius based on input.
-		mRadius += dx - dy;
-
-		// Restrict the radius.
-		//mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
+		mCamera.Pitch(dy);
+		mCamera.RotateY(dx);
 	}
 
 	mLastMousePos.x = x;
 	mLastMousePos.y = y;
 }
 
-void MyApp::Update(const GameTimer& gt)
+void MyApp::OnKeyboardInput(const GameTimer& gt)
 {
+	const float dt = gt.DeltaTime();
+
+	if (GetAsyncKeyState('W') & 0x8000)
+		mCamera.Walk(20.0f * dt);
+
+	if (GetAsyncKeyState('S') & 0x8000)
+		mCamera.Walk(-20.0f * dt);
+
+	if (GetAsyncKeyState('A') & 0x8000)
+		mCamera.Strafe(-20.0f * dt);
+
+	if (GetAsyncKeyState('D') & 0x8000)
+		mCamera.Strafe(20.0f * dt);
+
 	if (GetAsyncKeyState('1') & 0x8000) { mIsWireframe = true; }
 	else { mIsWireframe = false; }
 
-	// Convert Spherical to Cartesian coordinates.
-	mEyePos.x = mRadius * sinf(mPhi) * cosf(mTheta);
-	mEyePos.z = mRadius * sinf(mPhi) * sinf(mTheta);
-	mEyePos.y = mRadius * cosf(mPhi);
+	mCamera.UpdateViewMatrix();
+}
 
-	// Build the view matrix.
-	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
-	XMVECTOR target = XMVectorZero();
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+void MyApp::Update(const GameTimer& gt)
+{
+	OnKeyboardInput(gt);
 
-	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
-	XMStoreFloat4x4(&mView, view);
+	mEyePos = mCamera.GetPosition3f();
+	mView = mCamera.GetView4x4f();
 }
 
 std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> MyApp::GetStaticSamplers()
