@@ -60,6 +60,9 @@
     <ClCompile Include="App_Instancing.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="App_Culling.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Common\Camera.h">
