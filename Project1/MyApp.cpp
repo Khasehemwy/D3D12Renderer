@@ -17,8 +17,11 @@ MyApp::MyApp(HINSTANCE hInstance):
 
 bool MyApp::Initialize()
 {
+	auto ret = D3DApp::Initialize();
+
 	mCamera.SetPosition(XMFLOAT3(0, 0, -5));
-	return D3DApp::Initialize();
+
+	return ret;
 }
 
 void MyApp::OnResize()
@@ -26,8 +29,8 @@ void MyApp::OnResize()
 	D3DApp::OnResize();
 
 	// The window resized, so update the aspect ratio and recompute the projection matrix.
-	XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
-	XMStoreFloat4x4(&mProj, P);
+	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
+	mProj = mCamera.GetProj4x4f();
 }
 
 void MyApp::OnMouseDown(WPARAM btnState, int x, int y)
@@ -87,6 +90,7 @@ void MyApp::Update(const GameTimer& gt)
 
 	mEyePos = mCamera.GetPosition3f();
 	mView = mCamera.GetView4x4f();
+	mProj = mCamera.GetProj4x4f();
 }
 
 std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> MyApp::GetStaticSamplers()
