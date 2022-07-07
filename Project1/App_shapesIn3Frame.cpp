@@ -139,6 +139,9 @@ shapesIn3Frame::shapesIn3Frame(HINSTANCE hInstance):
 bool shapesIn3Frame::Initialize()
 {
 	if (!MyApp::Initialize())return false;
+
+	mCamera.SetPosition(XMFLOAT3(0, 5, -10));
+
 	mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr);
 
 	BuildRootSignature();
@@ -177,6 +180,26 @@ void shapesIn3Frame::Update(const GameTimer& gt)
 		CloseHandle(eventHandle);
 	}
 	//:todo
+
+	//Update Per Object CB
+	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
+	for (auto& e : mAllRenderitems)
+	{
+		// Only update the cbuffer data if the constants have changed.  
+		// This needs to be tracked per frame resource.
+		if (e->NumFramesDirty > 0)
+		{
+			XMMATRIX world = XMLoadFloat4x4(&e->World);
+
+			ObjectConstants objConstants;
+			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
+
+			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
+
+			// Next FrameResource need to be updated too.
+			e->NumFramesDirty--;
+		}
+	}
 
 	//Update Main Pass Constant Buffer
 	XMMATRIX view = XMLoadFloat4x4(&mView);
@@ -290,8 +313,8 @@ void shapesIn3Frame::BuildRootSignature()
 
 void shapesIn3Frame::BuildShadersAndInputLayout()
 {
-	mShaders["standardVS"] = d3dUtil::LoadBinary(L"ShapesIn3Frame\\shader_vs.cso");
-	mShaders["opaquePS"] = d3dUtil::LoadBinary(L"ShapesIn3Frame\\shader_ps.cso");
+	mShaders["standardVS"] = d3dUtil::CompileShader(L"Shaders\\ShapesIn3Frame\\shader.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["opaquePS"] = d3dUtil::CompileShader(L"Shaders\\ShapesIn3Frame\\shader.hlsl", nullptr, "PS", "ps_5_1");
 
 	mInputLayout = {
 		{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,0,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0} ,
@@ -522,7 +545,7 @@ void shapesIn3Frame::BuildConstantBufferViews()
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 	UINT objCount = mOpaqueRenderitems.size();
 
-	for (int frameIndex = 0; frameIndex <= gNumFrameResources; frameIndex++) {
+	for (int frameIndex = 0; frameIndex < gNumFrameResources; frameIndex++) {
 		auto objectCB = mFrameResources[frameIndex]->ObjectCB->Resource();
 
 		for (int objectIndex = 0; objectIndex < objCount; objectIndex++) {
@@ -542,7 +565,7 @@ void shapesIn3Frame::BuildConstantBufferViews()
 
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 
-	for (int frameIndex = 0; frameIndex <= gNumFrameResources; frameIndex++) {
+	for (int frameIndex = 0; frameIndex < gNumFrameResources; frameIndex++) {
 		auto passCB = mFrameResources[frameIndex]->PassCB->Resource();
 
 		D3D12_GPU_VIRTUAL_ADDRESS cbAddress = passCB->GetGPUVirtualAddress();
