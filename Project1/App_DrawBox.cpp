@@ -200,7 +200,7 @@ void DrawBoxApp::BuildRootSignature()
 {
 	CD3DX12_ROOT_PARAMETER slotRootParameter[1];
 	CD3DX12_DESCRIPTOR_RANGE cbvTable;
-	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 0);
 	slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable); 
 
 	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, slotRootParameter, 0, nullptr,
@@ -223,8 +223,8 @@ void DrawBoxApp::BuildShaderAndInputLayout()
 {
 	HRESULT hr = S_OK;
 
-	mvsByteCode = d3dUtil::LoadBinary(L"Shaders\\DrawBox\\shader_vs.cso");
-	mpsByteCode = d3dUtil::LoadBinary(L"Shaders\\DrawBox\\shader_ps.cso");
+	mvsByteCode = d3dUtil::CompileShader(L"Shaders\\DrawBox\\shader.hlsl", nullptr, "VS", "vs_5_1");
+	mpsByteCode = d3dUtil::CompileShader(L"Shaders\\DrawBox\\shader.hlsl", nullptr, "PS", "ps_5_1");
 
 	mInputLayout =
 	{
