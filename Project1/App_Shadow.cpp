@@ -83,11 +83,14 @@ private:
 	std::unique_ptr<UploadBuffer<Light>> mLightBuffer = nullptr;
 	std::vector<Light>mLights;
 
+	void DrawShadowMap(int lightIndex);
+
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
 	void BuildRootSignature();
 
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
 	std::vector<D3D12_INPUT_ELEMENT_DESC>mInputLayout;
+	std::vector<D3D12_INPUT_ELEMENT_DESC>mInputLayoutShadowMap;
 	void BuildShadersAndInputLayout();
 
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
@@ -227,6 +230,8 @@ void Shadow::Update(const GameTimer& gt)
 
 void Shadow::Draw(const GameTimer& gt)
 {
+	DrawShadowMap(0);
+	return;
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 	cmdListAlloc->Reset();
 
@@ -294,6 +299,77 @@ void Shadow::BuildFrameResources()
 	};
 }
 
+void Shadow::DrawShadowMap(int lightIndex)
+{
+	// Update Eye Pos to Light
+	auto light = mLights[lightIndex];
+	PassConstants lightCB = mMainPassCB;
+	lightCB.eyePos = light.Position;
+
+	auto lightCam = mCamera;
+	lightCam.SetPosition(light.Position);
+	lightCam.LookAt(light.Position, light.Direction, mCamera.GetUp3f());
+	lightCam.UpdateViewMatrix();
+	XMMATRIX view = lightCam.GetView();
+	XMStoreFloat4x4(&lightCB.View, XMMatrixTranspose(view));
+
+	auto orthoProj = XMMatrixOrthographicLH(50.0f, 50.0f, 1.0f, 100.0f);
+	XMStoreFloat4x4(&lightCB.Proj, XMMatrixTranspose(orthoProj));
+
+	auto currPassCB = mCurrFrameResource->PassCB.get();
+	currPassCB->CopyData(0, lightCB);
+	// Update Finish
+
+	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
+	cmdListAlloc->Reset();
+
+	mCommandList->Reset(cmdListAlloc.Get(), mPSOs["shadowMap"].Get());
+
+	mCommandList->RSSetViewports(1, &mScreenViewport);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
+
+	mCommandList->ResourceBarrier(
+		1, &CD3DX12_RESOURCE_BARRIER::Transition(
+			CurrentBackBuffer(),
+			D3D12_RESOURCE_STATE_PRESENT,
+			D3D12_RESOURCE_STATE_RENDER_TARGET)
+	);
+
+	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
+	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+
+	int passCbvIndex = mPassCbvOffset + mCurrFrameResourceIndex;
+	auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+	passCbvHandle.Offset(passCbvIndex, mCbvSrvUavDescriptorSize);
+	mCommandList->SetGraphicsRootDescriptorTable(1, passCbvHandle);
+
+	mCommandList->SetGraphicsRootShaderResourceView(2, mLightBuffer->Resource()->GetGPUVirtualAddress());
+
+	DrawRenderItems(mCommandList.Get(), mOpaqueRenderitems);
+
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+
+	mCommandList->Close();
+
+	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
+	ThrowIfFailed(mSwapChain->Present(0, 0));
+	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
+
+	mCurrFrameResource->Fence = ++mCurrentFence;
+
+	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
+}
+
 void Shadow::BuildRootSignature()
 {
 	CD3DX12_DESCRIPTOR_RANGE cbvTable[2];
@@ -331,10 +407,17 @@ void Shadow::BuildShadersAndInputLayout()
 	mShaders["standardVS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\shader.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["opaquePS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\shader.hlsl", nullptr, "PS", "ps_5_1");
 
+	mShaders["shadowMapVS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\shadowMap.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["shadowMapPS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\shadowMap.hlsl", nullptr, "PS", "ps_5_1");
+
 	mInputLayout = {
 		{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,0,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0} ,
 		{"COLOR",0,DXGI_FORMAT_R32G32B32A32_FLOAT,0,sizeof(float) * 3,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0},
 		{"NORMAL",0,DXGI_FORMAT_R32G32B32_FLOAT,0,sizeof(float) * 3 + sizeof(float) * 4,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}
+	};
+
+	mInputLayoutShadowMap = {
+		{"POSITION",0,DXGI_FORMAT_R32G32B32_FLOAT,0,0,D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,0}
 	};
 }
 
@@ -545,7 +628,7 @@ void Shadow::BuildObjects()
 	// Light
 	{
 		Light dirLight;
-		dirLight.Position = XMFLOAT3(0, 30, -30);
+		dirLight.Position = XMFLOAT3(0, 20, 20);
 		dirLight.Strength = XMFLOAT3(1, 0.2, 0.2);
 		dirLight.Direction = XMFLOAT3(0, -1, -1);
 		mLights.push_back(dirLight);
@@ -653,6 +736,37 @@ void Shadow::BuildPSOs()
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
 	opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 	md3dDevice->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"]));
+
+	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowMapPsoDesc;
+
+		ZeroMemory(&shadowMapPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+		shadowMapPsoDesc.InputLayout = { mInputLayoutShadowMap.data(), (UINT)mInputLayoutShadowMap.size() };
+		shadowMapPsoDesc.pRootSignature = mRootSignature.Get();
+		shadowMapPsoDesc.VS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["shadowMapVS"]->GetBufferPointer()),
+			mShaders["shadowMapVS"]->GetBufferSize()
+		};
+		shadowMapPsoDesc.PS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["shadowMapPS"]->GetBufferPointer()),
+			mShaders["shadowMapPS"]->GetBufferSize()
+		};
+
+		shadowMapPsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+		shadowMapPsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+		shadowMapPsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+		shadowMapPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+		shadowMapPsoDesc.SampleMask = UINT_MAX;
+		shadowMapPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		shadowMapPsoDesc.NumRenderTargets = 1;
+		shadowMapPsoDesc.RTVFormats[0] = mBackBufferFormat;
+		shadowMapPsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
+		shadowMapPsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
+		shadowMapPsoDesc.DSVFormat = mDepthStencilFormat;
+		md3dDevice->CreateGraphicsPipelineState(&shadowMapPsoDesc, IID_PPV_ARGS(&mPSOs["shadowMap"]));
+	}
 }
 
 void Shadow::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
