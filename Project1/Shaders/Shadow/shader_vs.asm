@@ -16,8 +16,15 @@
 //
 //   float4x4 gView;                    // Offset:    0 Size:    64
 //   float4x4 gProj;                    // Offset:   64 Size:    64
-//   int gLightCount;                   // Offset:  128 Size:     4 [unused]
+//   int gLightCount;                   // Offset:  128 Size:     4
 //   float3 gEyePos;                    // Offset:  132 Size:    12 [unused]
+//
+// }
+//
+// Resource bind info for gLightShadowTransform
+// {
+//
+//   float4x4 $Element;                 // Offset:    0 Size:    64
 //
 // }
 //
@@ -26,6 +33,7 @@
 //
 // Name                                 Type  Format         Dim      ID      HLSL Bind  Count
 // ------------------------------ ---------- ------- ----------- ------- -------------- ------
+// gLightShadowTransform             texture  struct         r/o      T0      t0,space2      1 
 // cbPerObject                       cbuffer      NA          NA     CB0            cb0      1 
 // cbPerPass                         cbuffer      NA          NA     CB1            cb1      1 
 //
@@ -37,7 +45,7 @@
 // -------------------- ----- ------ -------- -------- ------- ------
 // POSITION                 0   xyz         0     NONE   float   xyz 
 // COLOR                    0   xyzw        1     NONE   float   xyzw
-// NORMAL                   0   xyz         2     NONE   float       
+// NORMAL                   0   xyz         2     NONE   float   xyz 
 //
 //
 // Output signature:
@@ -46,31 +54,36 @@
 // -------------------- ----- ------ -------- -------- ------- ------
 // SV_POSITION              0   xyzw        0      POS   float   xyzw
 // WORLD_POSITION           0   xyz         1     NONE   float   xyz 
-// COLOR                    0   xyzw        2     NONE   float   xyzw
-// NORMAL                   0   xyz         3     NONE   float   xyz 
+// LIGHT_POSITION           0   xyzw        2     NONE   float   xyzw
+// COLOR                    0   xyzw        3     NONE   float   xyzw
+// NORMAL                   0   xyz         4     NONE   float   xyz 
 //
 vs_5_1
 dcl_globalFlags refactoringAllowed | skipOptimization
 dcl_constantbuffer CB0[0:0][4], immediateIndexed, space=0
-dcl_constantbuffer CB1[1:1][8], immediateIndexed, space=0
+dcl_constantbuffer CB1[1:1][9], immediateIndexed, space=0
+dcl_resource_structured T0[0:0], 64, space=2
 dcl_input v0.xyz
 dcl_input v1.xyzw
+dcl_input v2.xyz
 dcl_output_siv o0.xyzw, position
 dcl_output o1.xyz
 dcl_output o2.xyzw
-dcl_output o3.xyz
-dcl_temps 4
+dcl_output o3.xyzw
+dcl_output o4.xyz
+dcl_temps 8
 //
 // Initial variable locations:
 //   v0.x <- vin.posLocal.x; v0.y <- vin.posLocal.y; v0.z <- vin.posLocal.z; 
 //   v1.x <- vin.color.x; v1.y <- vin.color.y; v1.z <- vin.color.z; v1.w <- vin.color.w; 
 //   v2.x <- vin.normal.x; v2.y <- vin.normal.y; v2.z <- vin.normal.z; 
-//   o3.x <- <VS return value>.normal.x; o3.y <- <VS return value>.normal.y; o3.z <- <VS return value>.normal.z; 
-//   o2.x <- <VS return value>.color.x; o2.y <- <VS return value>.color.y; o2.z <- <VS return value>.color.z; o2.w <- <VS return value>.color.w; 
-//   o1.x <- <VS return value>.posWorld.x; o1.y <- <VS return value>.posWorld.y; o1.z <- <VS return value>.posWorld.z; 
-//   o0.x <- <VS return value>.posProj.x; o0.y <- <VS return value>.posProj.y; o0.z <- <VS return value>.posProj.z; o0.w <- <VS return value>.posProj.w
+//   o4.x <- <VS return value>.normal.x; o4.y <- <VS return value>.normal.y; o4.z <- <VS return value>.normal.z; 
+//   o3.x <- <VS return value>.color.x; o3.y <- <VS return value>.color.y; o3.z <- <VS return value>.color.z; o3.w <- <VS return value>.color.w; 
+//   o2.x <- <VS return value>
+// <internal error> could not get find UDT child with correct offset in PDB
+
 //
-#line 48 "E:\Projects\Project1\Project1\Shaders\Shadow\shader.hlsl"
+#line 56 "E:\Projects\Project1\Project1\Shaders\Shadow\shader.hlsl"
 mov r0.xyz, v0.xyzx
 mov r0.w, l(1.000000)
 dp4 r1.x, r0.xyzw, CB0[0][0].xyzw  // r1.x <- vout.posProj.x
@@ -78,38 +91,142 @@ dp4 r1.y, r0.xyzw, CB0[0][1].xyzw  // r1.y <- vout.posProj.y
 dp4 r1.z, r0.xyzw, CB0[0][2].xyzw  // r1.z <- vout.posProj.z
 dp4 r1.w, r0.xyzw, CB0[0][3].xyzw  // r1.w <- vout.posProj.w
 
-#line 49
+#line 57
 dp4 r2.x, r1.xyzw, CB1[1][0].xyzw  // r2.x <- vout.posProj.x
 dp4 r2.y, r1.xyzw, CB1[1][1].xyzw  // r2.y <- vout.posProj.y
 dp4 r2.z, r1.xyzw, CB1[1][2].xyzw  // r2.z <- vout.posProj.z
 dp4 r2.w, r1.xyzw, CB1[1][3].xyzw  // r2.w <- vout.posProj.w
 
-#line 50
+#line 58
 dp4 r1.x, r2.xyzw, CB1[1][4].xyzw  // r1.x <- vout.posProj.x
 dp4 r1.y, r2.xyzw, CB1[1][5].xyzw  // r1.y <- vout.posProj.y
 dp4 r1.z, r2.xyzw, CB1[1][6].xyzw  // r1.z <- vout.posProj.z
 dp4 r1.w, r2.xyzw, CB1[1][7].xyzw  // r1.w <- vout.posProj.w
 
-#line 52
+#line 60
 dp4 r2.x, r0.xyzw, CB0[0][0].xyzw  // r2.x <- vout.posWorld.x
 dp4 r2.y, r0.xyzw, CB0[0][1].xyzw  // r2.y <- vout.posWorld.y
 dp4 r2.z, r0.xyzw, CB0[0][2].xyzw  // r2.z <- vout.posWorld.z
 
-#line 53
-mov r0.w, l(1.000000)
-dp4 r0.x, r0.xxxw, CB0[0][0].xyzw  // r0.x <- vout.normal.x
-mov r3.w, l(1.000000)
-dp4 r0.y, r3.xxxw, CB0[0][1].xyzw  // r0.y <- vout.normal.y
-mov r3.w, l(1.000000)
-dp4 r0.z, r3.xxxw, CB0[0][2].xyzw  // r0.z <- vout.normal.z
+#line 62
+mov r0.x, l(0)  // r0.x <- i
+mov r3.xyzw, l(0,0,0,0)  // r3.x <- vout
+// <internal error> could not get find UDT child with correct offset in PDB
 
-#line 55
-mov r3.xyzw, v1.xyzw  // r3.x <- vout.color.x; r3.y <- vout.color.y; r3.z <- vout.color.z; r3.w <- vout.color.w
+mov r0.y, r0.x  // r0.y <- i
+loop 
+  ilt r0.z, r0.y, CB1[1][8].x
+  breakc_z r0.z
 
-#line 57
+#line 64
+  itof r2.w, l(1)
+  ld_structured r4.x, r0.y, l(0), T0[0].xxxx
+  ld_structured r5.x, r0.y, l(16), T0[0].xxxx
+  ld_structured r6.x, r0.y, l(32), T0[0].xxxx
+  ld_structured r7.x, r0.y, l(48), T0[0].xxxx
+  ld_structured r4.y, r0.y, l(4), T0[0].xxxx
+  ld_structured r5.y, r0.y, l(20), T0[0].xxxx
+  ld_structured r6.y, r0.y, l(36), T0[0].xxxx
+  ld_structured r7.y, r0.y, l(52), T0[0].xxxx
+  ld_structured r4.z, r0.y, l(8), T0[0].xxxx
+  ld_structured r5.z, r0.y, l(24), T0[0].xxxx
+  ld_structured r6.z, r0.y, l(40), T0[0].xxxx
+  ld_structured r7.z, r0.y, l(56), T0[0].xxxx
+  ld_structured r4.w, r0.y, l(12), T0[0].xxxx
+  ld_structured r5.w, r0.y, l(28), T0[0].xxxx
+  ld_structured r6.w, r0.y, l(44), T0[0].xxxx
+  ld_structured r7.w, r0.y, l(60), T0[0].xxxx
+  dp4 r3.x, r2.xyzw, r4.xyzw
+  dp4 r3.y, r2.xyzw, r5.xyzw
+  dp4 r3.z, r2.xyzw, r6.xyzw
+  dp4 r3.w, r2.xyzw, r7.xyzw
+
+#line 65
+  iadd r0.y, r0.y, l(1)
+endloop 
+
+#line 67
+nop 
+
+#line 4 "E:\Projects\Project1\Project1\Shaders\Common\common.hlsl"
+mov r0.x, CB0[0][0].x  // r0.x <- u.x
+mov r4.x, CB0[0][1].x  // r4.x <- u.y
+mov r5.x, CB0[0][2].x  // r5.x <- u.z
+
+#line 5
+mov r0.y, CB0[0][0].y  // r0.y <- v.x
+mov r4.y, CB0[0][1].y  // r4.y <- v.y
+mov r5.y, CB0[0][2].y  // r5.y <- v.z
+
+#line 6
+mov r0.z, CB0[0][0].z  // r0.z <- w.x
+mov r4.z, CB0[0][1].z  // r4.z <- w.y
+mov r5.z, CB0[0][2].z  // r5.z <- w.z
+
+#line 8
+mov r0.x, r0.x  // r0.x <- ans._m00
+
+#line 9
+mov r4.x, r4.x  // r4.x <- ans._m10
+
+#line 10
+mov r5.x, r5.x  // r5.x <- ans._m20
+
+#line 13
+mov r0.y, r0.y  // r0.y <- ans._m01
+
+#line 14
+mov r4.y, r4.y  // r4.y <- ans._m11
+
+#line 15
+mov r5.y, r5.y  // r5.y <- ans._m21
+
+#line 18
+mov r0.z, r0.z  // r0.z <- ans._m02
+
+#line 19
+mov r4.z, r4.z  // r4.z <- ans._m12
+
+#line 20
+mov r5.z, r5.z  // r5.z <- ans._m22
+
+#line 28
+mov r0.x, r0.x  // r0.x <- <inverse return value>._m00
+mov r0.y, r0.y  // r0.y <- <inverse return value>._m01
+mov r0.z, r0.z  // r0.z <- <inverse return value>._m02
+mov r4.x, r4.x  // r4.x <- <inverse return value>._m10
+mov r4.y, r4.y  // r4.y <- <inverse return value>._m11
+mov r4.z, r4.z  // r4.z <- <inverse return value>._m12
+mov r5.x, r5.x  // r5.x <- <inverse return value>._m20
+mov r5.y, r5.y  // r5.y <- <inverse return value>._m21
+mov r5.z, r5.z  // r5.z <- <inverse return value>._m22
+
+#line 67 "E:\Projects\Project1\Project1\Shaders\Shadow\shader.hlsl"
+mov r0.xyz, r0.xyzx  // r0.x <- normalMatrix._m00; r0.y <- normalMatrix._m10; r0.z <- normalMatrix._m20
+mov r4.xyz, r4.xyzx  // r4.x <- normalMatrix._m01; r4.y <- normalMatrix._m11; r4.z <- normalMatrix._m21
+mov r5.xyz, r5.xyzx  // r5.x <- normalMatrix._m02; r5.y <- normalMatrix._m12; r5.z <- normalMatrix._m22
+
+#line 68
+dp3 r0.x, v2.xyzx, r0.xyzx
+dp3 r0.y, v2.xyzx, r4.xyzx
+dp3 r0.z, v2.xyzx, r5.xyzx
+dp3 r4.x, r0.xyzx, CB0[0][0].xyzx  // r4.x <- vout.normal.x
+dp3 r4.y, r0.xyzx, CB0[0][1].xyzx  // r4.y <- vout.normal.y
+dp3 r4.z, r0.xyzx, CB0[0][2].xyzx  // r4.z <- vout.normal.z
+
+#line 69
+dp3 r0.x, r4.xyzx, r4.xyzx
+rsq r0.x, r0.x
+mul r0.xyz, r0.xxxx, r4.xyzx  // r0.x <- vout.normal.x; r0.y <- vout.normal.y; r0.z <- vout.normal.z
+
+#line 71
+mov r4.xyzw, v1.xyzw  // r4.x <- vout.color.x; r4.y <- vout.color.y; r4.z <- vout.color.z; r4.w <- vout.color.w
+
+#line 73
 mov o0.xyzw, r1.xyzw
 mov o2.xyzw, r3.xyzw
+mov o3.xyzw, r4.xyzw
 mov o1.xyz, r2.xyzx
-mov o3.xyz, r0.xyzx
+mov o4.xyz, r0.xyzx
 ret 
-// Approximately 29 instruction slots used
+// Approximately 93 instruction slots used

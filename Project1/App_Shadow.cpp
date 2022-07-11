@@ -2,6 +2,7 @@
 #include "../../Common/UploadBuffer.h"
 #include "../../Common/GeometryGenerator.h"
 #include "MyApp.h"
+#include "RenderTexture.h"
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
@@ -69,6 +70,12 @@ public:
 	UINT64 Fence = 0;
 };
 
+struct ShadowMapUse 
+{
+	XMFLOAT4X4 view;
+	XMFLOAT4X4 proj;
+};
+
 class Shadow :public MyApp
 {
 public:
@@ -77,15 +84,35 @@ public:
 	virtual bool Initialize()override;
 	virtual void Update(const GameTimer& gt)override;
 	virtual void Draw(const GameTimer& gt)override;
+	virtual void OnResize()override;
+	virtual void OnKeyboardInput(const GameTimer& gt)override;
 private:
+	enum class DefaultPSO : int
+	{
+		perObjectCB = 0,
+		perPassCB,
+		lightsSRV,
+		lightViewProjsSRV,
+		shadowMapSRV,
+		size //simply get enum class's size
+	};
 
 	static const int mMaxLightNum = 1;
 	std::unique_ptr<UploadBuffer<Light>> mLightBuffer = nullptr;
+	std::unique_ptr<UploadBuffer<XMFLOAT4X4>> mLightShadowTransformBuffer = nullptr;
 	std::vector<Light>mLights;
+	std::vector<XMFLOAT4X4>mLightShadowTransforms;
 
-	void DrawShadowMap(int lightIndex);
+	float mShadowMapWidth = 30;
+	float mShadowMapHeight = 30;
+	std::unique_ptr<RenderTexture> shadowMap;
+	std::unique_ptr<UploadBuffer<ShadowMapUse>> mShadowMapUseBuffer = nullptr;
+	void GenShadowMap(int lightIndex);
+
+	void DrawShadowMapToScreen();
 
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
+	ComPtr<ID3D12RootSignature> mShadowMapRootSignature = nullptr;
 	void BuildRootSignature();
 
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
@@ -106,6 +133,7 @@ private:
 	void BuildFrameResources();
 
 	UINT mPassCbvOffset = 0;
+	UINT mShadowMapTexOffset = 0;
 	ComPtr<ID3D12DescriptorHeap> mCbvHeap = nullptr;
 	PassConstants mMainPassCB;
 	void BuildDescriptorHeaps();
@@ -152,6 +180,11 @@ bool Shadow::Initialize()
 	mCamera.SetPosition(XMFLOAT3(0, 5, -10));
 
 	mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr);
+
+	shadowMap = std::make_unique<RenderTexture>(
+		md3dDevice.Get(),
+		mClientWidth, mClientHeight,
+		DXGI_FORMAT_R8G8B8A8_UNORM);
 
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
@@ -230,16 +263,29 @@ void Shadow::Update(const GameTimer& gt)
 
 void Shadow::Draw(const GameTimer& gt)
 {
-	DrawShadowMap(0);
-	return;
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 	cmdListAlloc->Reset();
 
+	{
+		mLightShadowTransforms.clear();
+
+		GenShadowMap(0);
+		
+		for (int i = 0; i < mMaxLightNum; i++) {
+			mLightShadowTransformBuffer->CopyData(i, mLightShadowTransforms[i]);
+		}
+	}
+
+	// restore mMainPassCB
+	auto currPassCB = mCurrFrameResource->PassCB.get();
+	currPassCB->CopyData(0, mMainPassCB);
+	
+	//![Tip]: Using SetPipelineState() instead of Reset() cause GenShadowMap() Have to reset it.
 	if (mIsWireframe) {
-		mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque_wireframe"].Get());
+		mCommandList->SetPipelineState(mPSOs["opaque_wireframe"].Get());
 	}
 	else {
-		mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get());
+		mCommandList->SetPipelineState(mPSOs["opaque"].Get());
 	}
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
@@ -265,11 +311,32 @@ void Shadow::Draw(const GameTimer& gt)
 	int passCbvIndex = mPassCbvOffset + mCurrFrameResourceIndex;
 	auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 	passCbvHandle.Offset(passCbvIndex, mCbvSrvUavDescriptorSize);
-	mCommandList->SetGraphicsRootDescriptorTable(1, passCbvHandle);
+	mCommandList->SetGraphicsRootDescriptorTable((UINT)DefaultPSO::perPassCB, passCbvHandle);
 
-	mCommandList->SetGraphicsRootShaderResourceView(2, mLightBuffer->Resource()->GetGPUVirtualAddress());
+	{
+		int shadowMapTexIndex = mShadowMapTexOffset + mCurrFrameResourceIndex;
+		auto shadowMapTexHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+		shadowMapTexHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
+		mCommandList->SetGraphicsRootDescriptorTable((UINT)DefaultPSO::shadowMapSRV, shadowMapTexHandle);
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = 1;
+
+		auto shadowMapTexCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+		shadowMapTexCpuHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
+		md3dDevice->CreateShaderResourceView(shadowMap->Output(), &srvDesc, shadowMapTexCpuHandle);
+	}
+
+	mCommandList->SetGraphicsRootShaderResourceView((UINT)DefaultPSO::lightsSRV, mLightBuffer->Resource()->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootShaderResourceView((UINT)DefaultPSO::lightViewProjsSRV, mLightShadowTransformBuffer->Resource()->GetGPUVirtualAddress());
 
 	DrawRenderItems(mCommandList.Get(), mOpaqueRenderitems);
+
+	DrawShadowMapToScreen();
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
@@ -287,6 +354,34 @@ void Shadow::Draw(const GameTimer& gt)
 	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 }
 
+void Shadow::OnResize()
+{
+	MyApp::OnResize();
+
+	if (shadowMap != nullptr) {
+		shadowMap->OnResize(mClientWidth, mClientHeight);
+	}
+}
+
+void Shadow::OnKeyboardInput(const GameTimer& gt)
+{
+	MyApp::OnKeyboardInput(gt);
+
+	const float dt = gt.DeltaTime();
+	if (GetAsyncKeyState('I') & 0x8000) {
+		mShadowMapHeight -= 20.0f * dt;
+	}
+	if (GetAsyncKeyState('K') & 0x8000) {
+		mShadowMapHeight += 20.0f * dt;
+	}
+	if (GetAsyncKeyState('J') & 0x8000) {
+		mShadowMapWidth -= 20.0f * dt;
+	}
+	if (GetAsyncKeyState('L') & 0x8000) {
+		mShadowMapWidth += 20.0f * dt;
+	}
+}
+
 void Shadow::BuildFrameResources()
 {
 	for (int i = 0; i < gNumFrameResources; i++) {
@@ -299,29 +394,42 @@ void Shadow::BuildFrameResources()
 	};
 }
 
-void Shadow::DrawShadowMap(int lightIndex)
+void Shadow::GenShadowMap(int lightIndex)
 {
 	// Update Eye Pos to Light
 	auto light = mLights[lightIndex];
-	PassConstants lightCB = mMainPassCB;
-	lightCB.eyePos = light.Position;
 
-	auto lightCam = mCamera;
+	Camera lightCam = mCamera;
 	lightCam.SetPosition(light.Position);
-	lightCam.LookAt(light.Position, light.Direction, mCamera.GetUp3f());
+	lightCam.LookAt(light.Position, light.Direction, XMFLOAT3(0, 1, 0));
 	lightCam.UpdateViewMatrix();
 	XMMATRIX view = lightCam.GetView();
-	XMStoreFloat4x4(&lightCB.View, XMMatrixTranspose(view));
 
-	auto orthoProj = XMMatrixOrthographicLH(50.0f, 50.0f, 1.0f, 100.0f);
-	XMStoreFloat4x4(&lightCB.Proj, XMMatrixTranspose(orthoProj));
+	auto orthoProj = XMMatrixOrthographicLH(mShadowMapWidth, mShadowMapHeight, 1.0f, 100.0f);
 
-	auto currPassCB = mCurrFrameResource->PassCB.get();
-	currPassCB->CopyData(0, lightCB);
+	{
+		// transform to texture space
+		XMMATRIX T(
+			0.5f, 0.0f, 0.0f, 0.0f,
+			0.0f, -0.5f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.5f, 0.5f, 0.0f, 1.0f);
+
+		XMFLOAT4X4 tmp;
+		auto shadowTransform = view * orthoProj * T;
+		XMStoreFloat4x4(&tmp, XMMatrixTranspose(shadowTransform));
+		mLightShadowTransforms.push_back(tmp);
+	}
 	// Update Finish
 
+	{
+		ShadowMapUse data;
+		XMStoreFloat4x4(&data.view,XMMatrixTranspose(view));
+		XMStoreFloat4x4(&data.proj, XMMatrixTranspose(orthoProj));
+		mShadowMapUseBuffer->CopyData(0, data);
+	}
+
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
-	cmdListAlloc->Reset();
 
 	mCommandList->Reset(cmdListAlloc.Get(), mPSOs["shadowMap"].Get());
 
@@ -348,64 +456,167 @@ void Shadow::DrawShadowMap(int lightIndex)
 	int passCbvIndex = mPassCbvOffset + mCurrFrameResourceIndex;
 	auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 	passCbvHandle.Offset(passCbvIndex, mCbvSrvUavDescriptorSize);
-	mCommandList->SetGraphicsRootDescriptorTable(1, passCbvHandle);
+	mCommandList->SetGraphicsRootDescriptorTable((UINT)DefaultPSO::perPassCB, passCbvHandle);
 
-	mCommandList->SetGraphicsRootShaderResourceView(2, mLightBuffer->Resource()->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootShaderResourceView(2, mShadowMapUseBuffer->Resource()->GetGPUVirtualAddress());
 
 	DrawRenderItems(mCommandList.Get(), mOpaqueRenderitems);
 
+	// copy to shadow map
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE));
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(shadowMap->Output(),
+		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
 
-	mCommandList->Close();
+	mCommandList->CopyResource(shadowMap->Output(), CurrentBackBuffer());
 
-	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
-	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+		D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT));
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(shadowMap->Output(),
+		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON));
 
-	ThrowIfFailed(mSwapChain->Present(0, 0));
-	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
 
-	mCurrFrameResource->Fence = ++mCurrentFence;
+	//mCommandList->Close();
 
-	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
+	//ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
+	//mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
+	//ThrowIfFailed(mSwapChain->Present(0, 0));
+	//mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
+
+	//mCurrFrameResource->Fence = ++mCurrentFence;
+
+	//mCommandQueue->Signal(mFence.Get(), mCurrentFence);
+}
+
+void Shadow::DrawShadowMapToScreen()
+{
+	mCommandList->SetPipelineState(mPSOs["shadowMapPresent"].Get());
+
+	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+
+	int passCbvIndex = mPassCbvOffset + mCurrFrameResourceIndex;
+	auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+	passCbvHandle.Offset(passCbvIndex, mCbvSrvUavDescriptorSize);
+	mCommandList->SetGraphicsRootDescriptorTable((UINT)DefaultPSO::perPassCB, passCbvHandle);
+
+	{
+		int shadowMapTexIndex = mShadowMapTexOffset + mCurrFrameResourceIndex;
+		auto shadowMapTexHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+		shadowMapTexHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
+		mCommandList->SetGraphicsRootDescriptorTable((UINT)DefaultPSO::shadowMapSRV, shadowMapTexHandle);
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0;
+		srvDesc.Texture2D.MipLevels = 1;
+
+		auto shadowMapTexCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+		shadowMapTexCpuHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
+		md3dDevice->CreateShaderResourceView(shadowMap->Output(), &srvDesc, shadowMapTexCpuHandle);
+	}
+
+	mCommandList->SetGraphicsRootShaderResourceView((UINT)DefaultPSO::lightsSRV, mLightBuffer->Resource()->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootShaderResourceView((UINT)DefaultPSO::lightViewProjsSRV, mLightShadowTransformBuffer->Resource()->GetGPUVirtualAddress());
+
+	mCommandList->IASetVertexBuffers(0, 1, &mGeometries["shadowMapGeo"]->VertexBufferView());
+	mCommandList->IASetIndexBuffer(&mGeometries["shadowMapGeo"]->IndexBufferView());
+	mCommandList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	mCommandList->DrawIndexedInstanced(
+		mGeometries["shadowMapGeo"]->DrawArgs["shadowMap"].IndexCount,
+		1, 0, 0, 0
+	);
 }
 
 void Shadow::BuildRootSignature()
 {
-	CD3DX12_DESCRIPTOR_RANGE cbvTable[2];
-	cbvTable[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
-	cbvTable[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 1);
+	{
+		CD3DX12_DESCRIPTOR_RANGE cbvTable[2];
+		cbvTable[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+		cbvTable[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 1);
 
-	CD3DX12_ROOT_PARAMETER slotRootParameter[3];
-	slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable[0]);
-	slotRootParameter[1].InitAsDescriptorTable(1, &cbvTable[1]);
-	slotRootParameter[2].InitAsShaderResourceView(0,1);
+		CD3DX12_DESCRIPTOR_RANGE texTable;
+		texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);
 
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
-		3, slotRootParameter, 0, nullptr,
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
-	);
+		CD3DX12_ROOT_PARAMETER slotRootParameter[(int)DefaultPSO::size];
+		slotRootParameter[(int)DefaultPSO::perObjectCB].InitAsDescriptorTable(1, &cbvTable[0]);
+		slotRootParameter[(int)DefaultPSO::perPassCB].InitAsDescriptorTable(1, &cbvTable[1]);
+		slotRootParameter[(int)DefaultPSO::lightsSRV].InitAsShaderResourceView(0, 1);
+		slotRootParameter[(int)DefaultPSO::lightViewProjsSRV].InitAsShaderResourceView(0, 2);
+		slotRootParameter[(int)DefaultPSO::shadowMapSRV].InitAsDescriptorTable(1, &texTable);
 
-	ComPtr<ID3DBlob> serializedRootSig = nullptr;
-	ComPtr<ID3DBlob> errorBlob = nullptr;
-	HRESULT hr = D3D12SerializeRootSignature(
-		&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-		serializedRootSig.GetAddressOf(),
-		errorBlob.GetAddressOf()
-	);
+		auto staticSamplers = GetStaticSamplers();
 
-	md3dDevice->CreateRootSignature(
-		0,
-		serializedRootSig->GetBufferPointer(),
-		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(mRootSignature.GetAddressOf())
-	);
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
+			sizeof(slotRootParameter) / sizeof(CD3DX12_ROOT_PARAMETER),
+			slotRootParameter,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+		ComPtr<ID3DBlob> serializedRootSig = nullptr;
+		ComPtr<ID3DBlob> errorBlob = nullptr;
+		HRESULT hr = D3D12SerializeRootSignature(
+			&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedRootSig.GetAddressOf(),
+			errorBlob.GetAddressOf()
+		);
+
+		md3dDevice->CreateRootSignature(
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(mRootSignature.GetAddressOf())
+		);
+	}
+
+	// shadow map generate use
+	{
+		CD3DX12_DESCRIPTOR_RANGE cbvTable[2];
+		cbvTable[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+		cbvTable[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 4, 1);
+
+		CD3DX12_ROOT_PARAMETER slotRootParameter[3];
+		slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable[0]);
+		slotRootParameter[1].InitAsDescriptorTable(1, &cbvTable[1]);
+		slotRootParameter[2].InitAsShaderResourceView(0);
+
+		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
+			sizeof(slotRootParameter) / sizeof(CD3DX12_ROOT_PARAMETER), slotRootParameter, 0, nullptr,
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
+		);
+
+		ComPtr<ID3DBlob> serializedRootSig = nullptr;
+		ComPtr<ID3DBlob> errorBlob = nullptr;
+		HRESULT hr = D3D12SerializeRootSignature(
+			&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
+			serializedRootSig.GetAddressOf(),
+			errorBlob.GetAddressOf()
+		);
+
+		md3dDevice->CreateRootSignature(
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(mShadowMapRootSignature.GetAddressOf())
+		);
+	}
 }
 
 void Shadow::BuildShadersAndInputLayout()
 {
 	mShaders["standardVS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\shader.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["opaquePS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\shader.hlsl", nullptr, "PS", "ps_5_1");
+
+	mShaders["shadowMapPresentVS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\presentShadowMap.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["shadowMapPresentPS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\presentShadowMap.hlsl", nullptr, "PS", "ps_5_1");
 
 	mShaders["shadowMapVS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\shadowMap.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["shadowMapPS"] = d3dUtil::CompileShader(L"Shaders\\Shadow\\shadowMap.hlsl", nullptr, "PS", "ps_5_1");
@@ -546,6 +757,52 @@ void Shadow::BuildShapeGeometry()
 	geo->DrawArgs["cylinder"] = cylinderSubmesh;
 
 	mGeometries[geo->Name] = std::move(geo);
+
+
+	// build shadow map geo
+	{
+		std::array<Vertex, 4> vertices =
+		{
+			Vertex({ XMFLOAT3(0.5f, -0.5f, 0.0f), XMFLOAT4(0,0,0,1),XMFLOAT3(0,0,0)}),//left top
+			Vertex({ XMFLOAT3(1.0f, -0.5f, 0.0f), XMFLOAT4(0,0,0,1),XMFLOAT3(1,0,0)}),//right top
+			Vertex({ XMFLOAT3(0.5f, -1.0f, 0.0f), XMFLOAT4(0,0,0,1),XMFLOAT3(0,1,0)}),//left bottom
+			Vertex({ XMFLOAT3(1.0f, -1.0f, 0.0f), XMFLOAT4(0,0,0,1),XMFLOAT3(1,1,0)}),//right bottom
+		};
+		std::array<std::uint16_t, 6> indices =
+		{
+			0,1,2,
+			1,3,2
+		};
+
+		const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+		auto shadowMapGeo = std::make_unique<MeshGeometry>();
+		shadowMapGeo->Name = "shadowMapGeo";
+		D3DCreateBlob(vbByteSize, &shadowMapGeo->VertexBufferCPU);
+		CopyMemory(shadowMapGeo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+		D3DCreateBlob(ibByteSize, &shadowMapGeo->IndexBufferCPU);
+		CopyMemory(shadowMapGeo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+		shadowMapGeo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), vertices.data(), vbByteSize, shadowMapGeo->VertexBufferUploader);
+		shadowMapGeo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), indices.data(), ibByteSize, shadowMapGeo->IndexBufferUploader);
+
+		shadowMapGeo->VertexByteStride = sizeof(Vertex);
+		shadowMapGeo->VertexBufferByteSize = vbByteSize;
+		shadowMapGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
+		shadowMapGeo->IndexBufferByteSize = ibByteSize;
+
+		SubmeshGeometry submesh;
+		submesh.IndexCount = (UINT)indices.size();
+		submesh.StartIndexLocation = 0;
+		submesh.BaseVertexLocation = 0;
+
+		shadowMapGeo->DrawArgs["shadowMap"] = submesh;
+		mGeometries[shadowMapGeo->Name] = std::move(shadowMapGeo);
+	}
+
 }
 
 void Shadow::BuildObjects()
@@ -628,9 +885,9 @@ void Shadow::BuildObjects()
 	// Light
 	{
 		Light dirLight;
-		dirLight.Position = XMFLOAT3(0, 20, 20);
-		dirLight.Strength = XMFLOAT3(1, 0.2, 0.2);
-		dirLight.Direction = XMFLOAT3(0, -1, -1);
+		dirLight.Position = XMFLOAT3(5, 20, 20);
+		dirLight.Strength = XMFLOAT3(0.6, 0.2, 0.2);
+		dirLight.Direction = XMFLOAT3(-1, -1, -1);
 		mLights.push_back(dirLight);
 	}
 }
@@ -639,10 +896,12 @@ void Shadow::BuildDescriptorHeaps()
 {
 	UINT objCount = (UINT)mOpaqueRenderitems.size();
 	UINT frameCount = gNumFrameResources;
+	UINT shadowMapCount = 1;
 
-	UINT numDescriptors = objCount * gNumFrameResources + frameCount;
+	UINT numDescriptors = objCount * gNumFrameResources + frameCount + shadowMapCount * gNumFrameResources;
 
 	mPassCbvOffset = objCount * gNumFrameResources;
+	mShadowMapTexOffset = objCount * gNumFrameResources + frameCount;
 
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
 	cbvHeapDesc.NumDescriptors = numDescriptors;
@@ -698,6 +957,8 @@ void Shadow::BuildBuffers()
 
 	{
 		mLightBuffer = std::make_unique<UploadBuffer<Light>>(md3dDevice.Get(), mMaxLightNum, false);
+		mLightShadowTransformBuffer = std::make_unique<UploadBuffer<XMFLOAT4X4>>(md3dDevice.Get(), mMaxLightNum, false);
+		mShadowMapUseBuffer = std::make_unique<UploadBuffer<ShadowMapUse>>(md3dDevice.Get(), 1, false);
 	}
 
 }
@@ -738,11 +999,26 @@ void Shadow::BuildPSOs()
 	md3dDevice->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"]));
 
 	{
+		D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowMapPresentPsoDesc = opaquePsoDesc;
+		shadowMapPresentPsoDesc.VS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["shadowMapPresentVS"]->GetBufferPointer()),
+			mShaders["shadowMapPresentVS"]->GetBufferSize()
+		};
+		shadowMapPresentPsoDesc.PS =
+		{
+			reinterpret_cast<BYTE*>(mShaders["shadowMapPresentPS"]->GetBufferPointer()),
+			mShaders["shadowMapPresentPS"]->GetBufferSize()
+		};
+		md3dDevice->CreateGraphicsPipelineState(&shadowMapPresentPsoDesc, IID_PPV_ARGS(&mPSOs["shadowMapPresent"]));
+	}
+
+	{
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowMapPsoDesc;
 
 		ZeroMemory(&shadowMapPsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 		shadowMapPsoDesc.InputLayout = { mInputLayoutShadowMap.data(), (UINT)mInputLayoutShadowMap.size() };
-		shadowMapPsoDesc.pRootSignature = mRootSignature.Get();
+		shadowMapPsoDesc.pRootSignature = mShadowMapRootSignature.Get();
 		shadowMapPsoDesc.VS =
 		{
 			reinterpret_cast<BYTE*>(mShaders["shadowMapVS"]->GetBufferPointer()),
@@ -789,7 +1065,7 @@ void Shadow::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 		auto cbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 		cbvHandle.Offset(cbvIndex, mCbvSrvUavDescriptorSize);
 
-		cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+		cmdList->SetGraphicsRootDescriptorTable((UINT)DefaultPSO::perObjectCB, cbvHandle);
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}

@@ -24,9 +24,14 @@ struct Vertex
     float3 albedo;
     float3 normal;
     float3 pos;
+    float4 posOnLight;
 };
 
 StructuredBuffer<Light> gLights : register(t0, space1);
+StructuredBuffer<float4x4> gLightShadowTransform : register(t0, space2);
+
+Texture2D gShadowMap : register(t1);
+SamplerState gSampler : register(s0);
 
 struct VertexIn{
     float3 posLocal : POSITION;
@@ -62,10 +67,49 @@ VertexOut VS(VertexIn vin)
     return vout;
 };
 
+float CalcShadow(float4 shadowPosH)
+{
+    // Complete projection by doing division by w.
+    shadowPosH.xyz /= shadowPosH.w;
+
+    // Depth in NDC space.
+    float depth = shadowPosH.z;
+
+    uint width, height, numMips;
+    gShadowMap.GetDimensions(0, width, height, numMips);
+
+    // Texel size.
+    float dx = 1.0f / (float) width;
+
+    float percentLit = 0.0f;
+    const float2 offsets[9] =
+    {
+        float2(-dx, -dx), float2(0.0f, -dx), float2(dx, -dx),
+        float2(-dx, 0.0f), float2(0.0f, 0.0f), float2(dx, 0.0f),
+        float2(-dx, +dx), float2(0.0f, +dx), float2(dx, +dx)
+    };
+
+    float bias = 0.005f;
+    [unroll]
+    for (int i = 0; i < 9; ++i)
+    {
+        percentLit += (depth - bias < gShadowMap.Sample(gSampler, shadowPosH.xy + offsets[i]).r) ? 1 : 0;
+    }
+    
+    return percentLit / 9.0f;
+}
+
 float4 CalculateLight(Vertex v, Light light)
 {
-    float3 ambient = v.albedo * float3(0.3,0.3,0.3);
-
+    float shadowFactor = CalcShadow(v.posOnLight);
+    
+    float3 ambient = v.albedo * float3(0.2, 0.2, 0.2);
+    
+    if (shadowFactor < 1.0f)
+    {
+        return float4(ambient + ambient * shadowFactor, 1.0f);
+    }
+    
     float3 normal = normalize(v.normal);
     float3 lightDir = normalize(-light.Direction);
     float diff = max(dot(normal, lightDir), 0.0f);
@@ -82,16 +126,16 @@ float4 CalculateLight(Vertex v, Light light)
 
 float4 PS(VertexOut pin): SV_TARGET
 {
-    float4 color = pin.color;
-    float4x4 normalMatrix = transpose(inverse(gWorld));
+    float4 color = float4(0, 0, 0, 1);
     for (int i = 0; i < gLightCount; i++)
     {
         Vertex v;
         v.albedo = pin.color;
         v.normal = pin.normal;
         v.pos = pin.posWorld;
+        v.posOnLight = mul(float4(pin.posWorld, 1), gLightShadowTransform[i]);
         
-        color = CalculateLight(v, gLights[i]);
+        color += CalculateLight(v, gLights[i]);        
     }
     return color;
 };

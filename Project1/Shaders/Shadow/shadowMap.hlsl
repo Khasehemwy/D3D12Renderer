@@ -11,6 +11,15 @@ cbuffer cbPerPass : register(b1)
     float3 gEyePos;
 };
 
+
+struct ShadowMapUse
+{
+    float4x4 view;
+    float4x4 proj;
+};
+
+StructuredBuffer<ShadowMapUse> gUseData : register(t0);
+
 struct Light
 {
     float3 Strength;
@@ -27,8 +36,6 @@ struct Vertex
     float3 normal;
     float3 pos;
 };
-
-StructuredBuffer<Light> gLights : register(t0, space1);
 
 struct VertexIn
 {
@@ -47,8 +54,8 @@ VertexOut VS(VertexIn vin)
     VertexOut vout;
 
     vout.posProj = mul(float4(vin.posLocal, 1.0f), gWorld);
-    vout.posProj = mul(vout.posProj, gView);
-    vout.posProj = mul(vout.posProj, gProj);
+    vout.posProj = mul(vout.posProj, gUseData[0].view);
+    vout.posProj = mul(vout.posProj, gUseData[0].proj);
 
     return vout;
 };
