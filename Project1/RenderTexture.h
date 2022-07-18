@@ -5,7 +5,8 @@ class RenderTexture
 public:
 	RenderTexture(ID3D12Device* device,
 		UINT width, UINT height,
-		DXGI_FORMAT format);
+		DXGI_FORMAT format,
+		D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 
 	RenderTexture(const RenderTexture& rhs) = delete;
 
@@ -31,6 +32,7 @@ private:
 	UINT mWidth = 0;
 	UINT mHeight = 0;
 	DXGI_FORMAT mSrvFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	D3D12_RESOURCE_FLAGS mFlag;
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE mhCpuSrv;
 	CD3DX12_GPU_DESCRIPTOR_HANDLE mhGpuSrv;

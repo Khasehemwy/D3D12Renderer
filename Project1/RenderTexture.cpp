@@ -1,11 +1,17 @@
 #include "RenderTexture.h"
 
-RenderTexture::RenderTexture(ID3D12Device* device, UINT width, UINT height, DXGI_FORMAT format)
+RenderTexture::RenderTexture(
+	ID3D12Device* device, 
+	UINT width, 
+	UINT height, 
+	DXGI_FORMAT format,
+	D3D12_RESOURCE_FLAGS flag)
 {
 	md3dDevice = device;
 	mWidth = width;
 	mHeight = height;
 	mSrvFormat = format;
+	mFlag = flag;
 
 	BuildResources();
 }
@@ -23,6 +29,7 @@ void RenderTexture::OnResize(UINT newWidth, UINT newHeight)
 		mHeight = newHeight;
 
 		BuildResources();
+		BuildDescriptors();
 	}
 }
 
@@ -72,7 +79,7 @@ void RenderTexture::BuildResources()
 	texDesc.SampleDesc.Count = 1;
 	texDesc.SampleDesc.Quality = 0;
 	texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	texDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+	texDesc.Flags = mFlag;
 
 	md3dDevice->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
@@ -103,5 +110,5 @@ void RenderTexture::BuildDescriptors()
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	dsvDesc.Texture2D.MipSlice = 0;
-	//md3dDevice->CreateDepthStencilView(mRenderTex.Get(), &dsvDesc, mhCpuDsv);
+	md3dDevice->CreateDepthStencilView(mRenderTex.Get(), &dsvDesc, mhCpuDsv);
 }
