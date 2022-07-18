@@ -105,7 +105,7 @@ private:
 
 	float mShadowMapWidth = 30;
 	float mShadowMapHeight = 30;
-	std::unique_ptr<RenderTexture> shadowMap;
+	std::unique_ptr<RenderTexture> mShadowMap;
 	std::unique_ptr<UploadBuffer<ShadowMapUse>> mShadowMapUseBuffer = nullptr;
 	void GenShadowMap(int lightIndex);
 
@@ -134,10 +134,12 @@ private:
 
 	UINT mPassCbvOffset = 0;
 	UINT mShadowMapTexOffset = 0;
+	UINT mShadowMapDsvOffset = 0;
 	ComPtr<ID3D12DescriptorHeap> mCbvHeap = nullptr;
 	PassConstants mMainPassCB;
 	void BuildDescriptorHeaps();
 	void BuildBuffers();
+	virtual void CreateRtvAndDsvDescriptorHeaps()override;
 
 	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
 	void BuildPSOs();
@@ -181,7 +183,7 @@ bool Shadow::Initialize()
 
 	mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr);
 
-	shadowMap = std::make_unique<RenderTexture>(
+	mShadowMap = std::make_unique<RenderTexture>(
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
 		DXGI_FORMAT_R8G8B8A8_UNORM);
@@ -318,17 +320,6 @@ void Shadow::Draw(const GameTimer& gt)
 		auto shadowMapTexHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 		shadowMapTexHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
 		mCommandList->SetGraphicsRootDescriptorTable((UINT)DefaultPSO::shadowMapSRV, shadowMapTexHandle);
-
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MostDetailedMip = 0;
-		srvDesc.Texture2D.MipLevels = 1;
-
-		auto shadowMapTexCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-		shadowMapTexCpuHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
-		md3dDevice->CreateShaderResourceView(shadowMap->Output(), &srvDesc, shadowMapTexCpuHandle);
 	}
 
 	mCommandList->SetGraphicsRootShaderResourceView((UINT)DefaultPSO::lightsSRV, mLightBuffer->Resource()->GetGPUVirtualAddress());
@@ -358,8 +349,8 @@ void Shadow::OnResize()
 {
 	MyApp::OnResize();
 
-	if (shadowMap != nullptr) {
-		shadowMap->OnResize(mClientWidth, mClientHeight);
+	if (mShadowMap != nullptr) {
+		mShadowMap->OnResize(mClientWidth, mClientHeight);
 	}
 }
 
@@ -388,8 +379,9 @@ void Shadow::BuildFrameResources()
 		mFrameResources.push_back(
 			std::make_unique<FrameResource>(
 				md3dDevice.Get(),
-				1, mAllRenderitems.size()
-				)
+				gNumFrameResources,
+				mAllRenderitems.size()
+			)
 		);
 	};
 }
@@ -465,14 +457,14 @@ void Shadow::GenShadowMap(int lightIndex)
 	// copy to shadow map
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE));
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(shadowMap->Output(),
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Output(),
 		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
 
-	mCommandList->CopyResource(shadowMap->Output(), CurrentBackBuffer());
+	mCommandList->CopyResource(mShadowMap->Output(), CurrentBackBuffer());
 
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT));
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(shadowMap->Output(),
+	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Output(),
 		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON));
 
 
@@ -520,7 +512,7 @@ void Shadow::DrawShadowMapToScreen()
 
 		auto shadowMapTexCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
 		shadowMapTexCpuHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
-		md3dDevice->CreateShaderResourceView(shadowMap->Output(), &srvDesc, shadowMapTexCpuHandle);
+		md3dDevice->CreateShaderResourceView(mShadowMap->Output(), &srvDesc, shadowMapTexCpuHandle);
 	}
 
 	mCommandList->SetGraphicsRootShaderResourceView((UINT)DefaultPSO::lightsSRV, mLightBuffer->Resource()->GetGPUVirtualAddress());
@@ -898,10 +890,16 @@ void Shadow::BuildDescriptorHeaps()
 	UINT frameCount = gNumFrameResources;
 	UINT shadowMapCount = 1;
 
-	UINT numDescriptors = objCount * gNumFrameResources + frameCount + shadowMapCount * gNumFrameResources;
+	UINT numDescriptors = 
+		objCount * gNumFrameResources 
+		+ frameCount 
+		+ shadowMapCount * gNumFrameResources 
+		+ mLights.size() * gNumFrameResources // Every light has a shadow map
+		+ mLightShadowTransforms.size() * gNumFrameResources;
 
 	mPassCbvOffset = objCount * gNumFrameResources;
 	mShadowMapTexOffset = objCount * gNumFrameResources + frameCount;
+	mShadowMapDsvOffset = 1;
 
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
 	cbvHeapDesc.NumDescriptors = numDescriptors;
@@ -913,6 +911,12 @@ void Shadow::BuildDescriptorHeaps()
 
 void Shadow::BuildBuffers()
 {
+	{
+		mLightBuffer = std::make_unique<UploadBuffer<Light>>(md3dDevice.Get(), mMaxLightNum, false);
+		mLightShadowTransformBuffer = std::make_unique<UploadBuffer<XMFLOAT4X4>>(md3dDevice.Get(), mMaxLightNum, false);
+		mShadowMapUseBuffer = std::make_unique<UploadBuffer<ShadowMapUse>>(md3dDevice.Get(), 1, false);
+	}
+
 	{
 		UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 		UINT objCount = mOpaqueRenderitems.size();
@@ -956,11 +960,57 @@ void Shadow::BuildBuffers()
 	}
 
 	{
-		mLightBuffer = std::make_unique<UploadBuffer<Light>>(md3dDevice.Get(), mMaxLightNum, false);
-		mLightShadowTransformBuffer = std::make_unique<UploadBuffer<XMFLOAT4X4>>(md3dDevice.Get(), mMaxLightNum, false);
-		mShadowMapUseBuffer = std::make_unique<UploadBuffer<ShadowMapUse>>(md3dDevice.Get(), 1, false);
+		for (int frameIndex = 0; frameIndex < gNumFrameResources; frameIndex++) {
+
+			int shadowMapTexIndex = mShadowMapTexOffset + frameIndex;
+
+			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			srvDesc.Texture2D.MostDetailedMip = 0;
+			srvDesc.Texture2D.MipLevels = 1;
+
+			auto shadowMapTexCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+			shadowMapTexCpuHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
+			md3dDevice->CreateShaderResourceView(mShadowMap->Output(), &srvDesc, shadowMapTexCpuHandle);
+		}
 	}
 
+	{
+		for (int frameIndex = 0; frameIndex < gNumFrameResources; frameIndex++) {
+
+			auto srvCpuStart = mCbvHeap->GetCPUDescriptorHandleForHeapStart();
+			auto srvGpuStart = mCbvHeap->GetGPUDescriptorHandleForHeapStart();
+			auto dsvCpuStart = mDsvHeap->GetCPUDescriptorHandleForHeapStart();
+
+			mShadowMap->BuildDescriptors(
+				CD3DX12_CPU_DESCRIPTOR_HANDLE(srvCpuStart, mShadowMapTexOffset + frameIndex, mCbvSrvUavDescriptorSize),
+				CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mShadowMapTexOffset + frameIndex, mCbvSrvUavDescriptorSize),
+				CD3DX12_CPU_DESCRIPTOR_HANDLE(dsvCpuStart, mShadowMapDsvOffset + frameIndex, mDsvDescriptorSize));
+		}
+	}
+}
+
+void Shadow::CreateRtvAndDsvDescriptorHeaps()
+{
+	// Common creation.
+	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
+	rtvHeapDesc.NumDescriptors = SwapChainBufferCount;
+	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	rtvHeapDesc.NodeMask = 0;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
+		&rtvHeapDesc, IID_PPV_ARGS(mRtvHeap.GetAddressOf())));
+
+	// Add +1 DSV for shadow map.
+	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc;
+	dsvHeapDesc.NumDescriptors = 1 + gNumFrameResources;
+	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	dsvHeapDesc.NodeMask = 0;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
+		&dsvHeapDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
 }
 
 void Shadow::BuildPSOs()
@@ -992,7 +1042,7 @@ void Shadow::BuildPSOs()
 	opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
 	opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 	opaquePsoDesc.DSVFormat = mDepthStencilFormat;
-	md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"]));
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
 	opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
