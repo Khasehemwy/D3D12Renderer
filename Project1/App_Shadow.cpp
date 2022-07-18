@@ -186,7 +186,8 @@ bool Shadow::Initialize()
 	mShadowMap = std::make_unique<RenderTexture>(
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
-		DXGI_FORMAT_R8G8B8A8_UNORM);
+		DXGI_FORMAT_R8G8B8A8_UNORM,
+		D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
@@ -894,8 +895,8 @@ void Shadow::BuildDescriptorHeaps()
 		objCount * gNumFrameResources 
 		+ frameCount 
 		+ shadowMapCount * gNumFrameResources 
-		+ mLights.size() * gNumFrameResources // Every light has a shadow map
-		+ mLightShadowTransforms.size() * gNumFrameResources;
+		+ mMaxLightNum * gNumFrameResources // Every light has a shadow map
+		+ mMaxLightNum * gNumFrameResources;
 
 	mPassCbvOffset = objCount * gNumFrameResources;
 	mShadowMapTexOffset = objCount * gNumFrameResources + frameCount;
@@ -911,12 +912,6 @@ void Shadow::BuildDescriptorHeaps()
 
 void Shadow::BuildBuffers()
 {
-	{
-		mLightBuffer = std::make_unique<UploadBuffer<Light>>(md3dDevice.Get(), mMaxLightNum, false);
-		mLightShadowTransformBuffer = std::make_unique<UploadBuffer<XMFLOAT4X4>>(md3dDevice.Get(), mMaxLightNum, false);
-		mShadowMapUseBuffer = std::make_unique<UploadBuffer<ShadowMapUse>>(md3dDevice.Get(), 1, false);
-	}
-
 	{
 		UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 		UINT objCount = mOpaqueRenderitems.size();
@@ -989,6 +984,12 @@ void Shadow::BuildBuffers()
 				CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mShadowMapTexOffset + frameIndex, mCbvSrvUavDescriptorSize),
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(dsvCpuStart, mShadowMapDsvOffset + frameIndex, mDsvDescriptorSize));
 		}
+	}
+
+	{
+		mLightBuffer = std::make_unique<UploadBuffer<Light>>(md3dDevice.Get(), mMaxLightNum, false);
+		mLightShadowTransformBuffer = std::make_unique<UploadBuffer<XMFLOAT4X4>>(md3dDevice.Get(), mMaxLightNum, false);
+		mShadowMapUseBuffer = std::make_unique<UploadBuffer<ShadowMapUse>>(md3dDevice.Get(), 1, false);
 	}
 }
 
