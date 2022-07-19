@@ -13,6 +13,9 @@ RenderTexture::RenderTexture(
 	mFormat = format;
 	mFlag = flag;
 
+	mViewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
+	mScissorRect = { 0, 0, (int)width, (int)height };
+
 	BuildResources();
 }
 
@@ -55,6 +58,16 @@ CD3DX12_CPU_DESCRIPTOR_HANDLE RenderTexture::Srv() const
 CD3DX12_CPU_DESCRIPTOR_HANDLE RenderTexture::Dsv() const
 {
 	return mhCpuDsv;
+}
+
+D3D12_VIEWPORT RenderTexture::Viewport() const
+{
+	return mViewport;
+}
+
+D3D12_RECT RenderTexture::ScissorRect() const
+{
+	return mScissorRect;
 }
 
 DXGI_FORMAT RenderTexture::Format() const

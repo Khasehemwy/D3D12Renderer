@@ -23,17 +23,23 @@ public:
 	CD3DX12_CPU_DESCRIPTOR_HANDLE Srv()const;
 	CD3DX12_CPU_DESCRIPTOR_HANDLE Dsv()const;
 
+	D3D12_VIEWPORT Viewport()const;
+	D3D12_RECT ScissorRect()const;
+
 	DXGI_FORMAT Format()const;
 	D3D12_RESOURCE_FLAGS Flag()const;
 
 protected:
-	void BuildResources();
 	virtual void BuildDescriptors() = 0;
 
 	ID3D12Device* md3dDevice = nullptr;
 
 	UINT mWidth = 0;
 	UINT mHeight = 0;
+
+	D3D12_VIEWPORT mViewport;
+	D3D12_RECT mScissorRect;
+
 	DXGI_FORMAT mFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 	D3D12_RESOURCE_FLAGS mFlag;
 
@@ -42,4 +48,6 @@ protected:
 	CD3DX12_CPU_DESCRIPTOR_HANDLE mhCpuDsv;
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> mRenderTex = nullptr;
+private:
+	void BuildResources();
 };
