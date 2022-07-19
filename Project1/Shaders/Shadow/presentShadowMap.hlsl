@@ -62,5 +62,6 @@ VertexOut VS(VertexIn vin)
 
 float4 PS(VertexOut pin): SV_TARGET
 {
-    return gShadowMap.Sample(gSampler, pin.normal.xy);// use normal as tex coord
+    float z = gShadowMap.Sample(gSampler, pin.normal.xy).r;
+    return float4(z, z, z, 1); // use normal as tex coord
 };

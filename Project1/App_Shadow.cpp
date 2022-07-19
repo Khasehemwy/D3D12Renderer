@@ -218,7 +218,7 @@ bool Shadow::Initialize()
 
 	mShadowMap = std::make_unique<ShadowMap>(
 		md3dDevice.Get(),
-		mClientWidth, mClientHeight,
+		3840, 2160,
 		DXGI_FORMAT_R24G8_TYPELESS, // Format must match Flag
 		D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
@@ -300,14 +300,14 @@ void Shadow::Update(const GameTimer& gt)
 void Shadow::Draw(const GameTimer& gt)
 {
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
-	cmdListAlloc->Reset();
+	ThrowIfFailed(cmdListAlloc->Reset());
 
 	{
 		mLightShadowTransforms.clear();
 
 		GenShadowMap(0);
 		
-		for (int i = 0; i < mMaxLightNum; i++) {
+		for (int i = 0; i < mLightShadowTransforms.size(); i++) {
 			mLightShadowTransformBuffer->CopyData(i, mLightShadowTransforms[i]);
 		}
 	}
@@ -319,9 +319,11 @@ void Shadow::Draw(const GameTimer& gt)
 	//![Tip]: Using SetPipelineState() instead of Reset() cause GenShadowMap() Have to reset it.
 	if (mIsWireframe) {
 		mCommandList->SetPipelineState(mPSOs["opaque_wireframe"].Get());
+		//mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque_wireframe"].Get());
 	}
 	else {
 		mCommandList->SetPipelineState(mPSOs["opaque"].Get());
+		//mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get());
 	}
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
@@ -459,20 +461,19 @@ void Shadow::GenShadowMap(int lightIndex)
 
 	mCommandList->Reset(cmdListAlloc.Get(), mPSOs["shadowMap"].Get());
 
-	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScissorRect);
+	mCommandList->RSSetViewports(1, &mShadowMap->Viewport());
+	mCommandList->RSSetScissorRects(1, &mShadowMap->ScissorRect());
 
 	mCommandList->ResourceBarrier(
 		1, &CD3DX12_RESOURCE_BARRIER::Transition(
-			CurrentBackBuffer(),
-			D3D12_RESOURCE_STATE_PRESENT,
-			D3D12_RESOURCE_STATE_RENDER_TARGET)
+			mShadowMap->Output(),
+			D3D12_RESOURCE_STATE_COMMON,
+			D3D12_RESOURCE_STATE_DEPTH_WRITE)
 	);
 
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
-	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	mCommandList->ClearDepthStencilView(mShadowMap->Dsv(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+	mCommandList->OMSetRenderTargets(0, nullptr, false, &mShadowMap->Dsv());
 
 	ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
@@ -489,17 +490,17 @@ void Shadow::GenShadowMap(int lightIndex)
 	DrawRenderItems(mCommandList.Get(), mOpaqueRenderitems);
 
 	// copy to shadow map
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE));
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Output(),
-		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
+	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+	//	D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE));
+	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Output(),
+	//	D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST));
 
-	mCommandList->CopyResource(mShadowMap->Output(), CurrentBackBuffer());
+	//mCommandList->CopyResource(mShadowMap->Output(), CurrentBackBuffer());
 
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT));
+	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+	//	D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT));
 	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Output(),
-		D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_COMMON));
+		D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COMMON));
 
 
 	//mCommandList->Close();
@@ -536,17 +537,6 @@ void Shadow::DrawShadowMapToScreen()
 		auto shadowMapTexHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 		shadowMapTexHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
 		mCommandList->SetGraphicsRootDescriptorTable((UINT)DefaultPSO::shadowMapSRV, shadowMapTexHandle);
-
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MostDetailedMip = 0;
-		srvDesc.Texture2D.MipLevels = 1;
-
-		auto shadowMapTexCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-		shadowMapTexCpuHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
-		md3dDevice->CreateShaderResourceView(mShadowMap->Output(), &srvDesc, shadowMapTexCpuHandle);
 	}
 
 	mCommandList->SetGraphicsRootShaderResourceView((UINT)DefaultPSO::lightsSRV, mLightBuffer->Resource()->GetGPUVirtualAddress());
@@ -1119,8 +1109,8 @@ void Shadow::BuildPSOs()
 		shadowMapPsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 		shadowMapPsoDesc.SampleMask = UINT_MAX;
 		shadowMapPsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		shadowMapPsoDesc.NumRenderTargets = 1;
-		shadowMapPsoDesc.RTVFormats[0] = mBackBufferFormat;
+		shadowMapPsoDesc.NumRenderTargets = 0;
+		//shadowMapPsoDesc.RTVFormats[0] = mBackBufferFormat;
 		shadowMapPsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
 		shadowMapPsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 		shadowMapPsoDesc.DSVFormat = mDepthStencilFormat;

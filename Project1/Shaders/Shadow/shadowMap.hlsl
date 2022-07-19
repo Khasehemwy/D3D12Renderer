@@ -60,7 +60,7 @@ VertexOut VS(VertexIn vin)
     return vout;
 };
 
-float4 PS(VertexOut pin) : SV_TARGET
+void PS(VertexOut pin)
 {
-    return pin.posProj.z;
+    
 };

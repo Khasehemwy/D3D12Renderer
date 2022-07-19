@@ -89,7 +89,7 @@ float CalcShadow(float4 shadowPosH)
         float2(-dx, +dx), float2(0.0f, +dx), float2(dx, +dx)
     };
 
-    float bias = 0.005f;
+    float bias = 0.0005f;
     [unroll]
     for (int i = 0; i < 9; ++i)
     {
