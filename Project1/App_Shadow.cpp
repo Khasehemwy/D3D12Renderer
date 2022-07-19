@@ -76,6 +76,39 @@ struct ShadowMapUse
 	XMFLOAT4X4 proj;
 };
 
+class ShadowMap : public RenderTexture
+{
+public:
+	ShadowMap(ID3D12Device* device,
+		UINT width, UINT height,
+		DXGI_FORMAT format,
+		D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)
+		:RenderTexture(device, width, height, format, flag)
+	{};
+
+	virtual void BuildDescriptors()override;
+};
+
+void ShadowMap::BuildDescriptors()
+{
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = 1;
+	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+	srvDesc.Texture2D.PlaneSlice = 0;
+	md3dDevice->CreateShaderResourceView(mRenderTex.Get(), &srvDesc, mhCpuSrv);
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	dsvDesc.Texture2D.MipSlice = 0;
+	md3dDevice->CreateDepthStencilView(mRenderTex.Get(), &dsvDesc, mhCpuDsv);
+}
+
 class Shadow :public MyApp
 {
 public:
@@ -105,7 +138,7 @@ private:
 
 	float mShadowMapWidth = 30;
 	float mShadowMapHeight = 30;
-	std::unique_ptr<RenderTexture> mShadowMap;
+	std::unique_ptr<ShadowMap> mShadowMap;
 	std::unique_ptr<UploadBuffer<ShadowMapUse>> mShadowMapUseBuffer = nullptr;
 	void GenShadowMap(int lightIndex);
 
@@ -183,10 +216,10 @@ bool Shadow::Initialize()
 
 	mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr);
 
-	mShadowMap = std::make_unique<RenderTexture>(
+	mShadowMap = std::make_unique<ShadowMap>(
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
-		DXGI_FORMAT_R8G8B8A8_UNORM,
+		DXGI_FORMAT_R24G8_TYPELESS, // Format must match Flag
 		D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
 
 	BuildRootSignature();
@@ -959,27 +992,26 @@ void Shadow::BuildBuffers()
 
 			int shadowMapTexIndex = mShadowMapTexOffset + frameIndex;
 
-			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-			srvDesc.Texture2D.MostDetailedMip = 0;
-			srvDesc.Texture2D.MipLevels = 1;
+			// for UAV
 
-			auto shadowMapTexCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-			shadowMapTexCpuHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
-			md3dDevice->CreateShaderResourceView(mShadowMap->Output(), &srvDesc, shadowMapTexCpuHandle);
-		}
-	}
+			//D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+			//srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			//srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			//srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+			//srvDesc.Texture2D.MostDetailedMip = 0;
+			//srvDesc.Texture2D.MipLevels = 1;
 
-	{
-		for (int frameIndex = 0; frameIndex < gNumFrameResources; frameIndex++) {
+			//auto shadowMapTexCpuHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+			//shadowMapTexCpuHandle.Offset(shadowMapTexIndex, mCbvSrvUavDescriptorSize);
+			//md3dDevice->CreateShaderResourceView(mShadowMap->Output(), &srvDesc, shadowMapTexCpuHandle);
 
+
+			// for DSV
 			auto srvCpuStart = mCbvHeap->GetCPUDescriptorHandleForHeapStart();
 			auto srvGpuStart = mCbvHeap->GetGPUDescriptorHandleForHeapStart();
 			auto dsvCpuStart = mDsvHeap->GetCPUDescriptorHandleForHeapStart();
 
-			mShadowMap->BuildDescriptors(
+			mShadowMap->RenderTexture::BuildDescriptors(
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(srvCpuStart, mShadowMapTexOffset + frameIndex, mCbvSrvUavDescriptorSize),
 				CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mShadowMapTexOffset + frameIndex, mCbvSrvUavDescriptorSize),
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(dsvCpuStart, mShadowMapDsvOffset + frameIndex, mDsvDescriptorSize));
@@ -1121,3 +1153,5 @@ void Shadow::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
 }
+
+
