@@ -17,21 +17,24 @@ public:
 	void BuildDescriptors(
 		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv,
 		CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv,
-		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuDsv,
-		DXGI_FORMAT srvFormat = DXGI_FORMAT_R8G8B8A8_UNORM);
+		CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuDsv);
+
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE Srv()const;
 	CD3DX12_CPU_DESCRIPTOR_HANDLE Dsv()const;
 
-private:
+	DXGI_FORMAT Format()const;
+	D3D12_RESOURCE_FLAGS Flag()const;
+
+protected:
 	void BuildResources();
-	void BuildDescriptors();
+	virtual void BuildDescriptors() = 0;
 
 	ID3D12Device* md3dDevice = nullptr;
 
 	UINT mWidth = 0;
 	UINT mHeight = 0;
-	DXGI_FORMAT mSrvFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	DXGI_FORMAT mFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 	D3D12_RESOURCE_FLAGS mFlag;
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE mhCpuSrv;

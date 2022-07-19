@@ -10,7 +10,7 @@ RenderTexture::RenderTexture(
 	md3dDevice = device;
 	mWidth = width;
 	mHeight = height;
-	mSrvFormat = format;
+	mFormat = format;
 	mFlag = flag;
 
 	BuildResources();
@@ -36,14 +36,12 @@ void RenderTexture::OnResize(UINT newWidth, UINT newHeight)
 void RenderTexture::BuildDescriptors(
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv, 
 	CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv, 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuDsv,
-	DXGI_FORMAT srvFormat)
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuDsv)
 {
 	// Save references to the descriptors. 
 	mhCpuSrv = hCpuSrv;
 	mhGpuSrv = hGpuSrv;
 	mhCpuDsv = hCpuDsv;
-	mSrvFormat = srvFormat;
 
 	//  Create the descriptors
 	BuildDescriptors();
@@ -57,6 +55,16 @@ CD3DX12_CPU_DESCRIPTOR_HANDLE RenderTexture::Srv() const
 CD3DX12_CPU_DESCRIPTOR_HANDLE RenderTexture::Dsv() const
 {
 	return mhCpuDsv;
+}
+
+DXGI_FORMAT RenderTexture::Format() const
+{
+	return mFormat;
+}
+
+D3D12_RESOURCE_FLAGS RenderTexture::Flag() const
+{
+	return mFlag;
 }
 
 void RenderTexture::BuildResources()
@@ -75,40 +83,38 @@ void RenderTexture::BuildResources()
 	texDesc.Height = mHeight;
 	texDesc.DepthOrArraySize = 1;
 	texDesc.MipLevels = 1;
-	texDesc.Format = mSrvFormat;
+	texDesc.Format = mFormat;
 	texDesc.SampleDesc.Count = 1;
 	texDesc.SampleDesc.Quality = 0;
 	texDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	texDesc.Flags = mFlag;
 
-	md3dDevice->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&texDesc,
-		D3D12_RESOURCE_STATE_COMMON,
-		nullptr,
-		IID_PPV_ARGS(&mRenderTex)
-	);
-}
+	if (texDesc.Flags == D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL) {
+		//as DSV
+		D3D12_CLEAR_VALUE optClear;
+		optClear.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+		optClear.DepthStencil.Depth = 1.0f;
+		optClear.DepthStencil.Stencil = 0;
 
-void RenderTexture::BuildDescriptors()
-{
-	// Create SRV to resource so we can sample the shadow map in a shader program.
-	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = mSrvFormat;
-	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-	srvDesc.Texture2D.MostDetailedMip = 0;
-	srvDesc.Texture2D.MipLevels = 1;
-	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-	srvDesc.Texture2D.PlaneSlice = 0;
-	md3dDevice->CreateShaderResourceView(mRenderTex.Get(), &srvDesc, mhCpuSrv);
+		ThrowIfFailed(md3dDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&texDesc,
+			D3D12_RESOURCE_STATE_COMMON,
+			&optClear,
+			IID_PPV_ARGS(&mRenderTex)
+		));
+	}
 
-	// Create DSV to resource so we can render to the shadow map.
-	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-	dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	dsvDesc.Texture2D.MipSlice = 0;
-	md3dDevice->CreateDepthStencilView(mRenderTex.Get(), &dsvDesc, mhCpuDsv);
+	else {
+		// as UAV
+		ThrowIfFailed(md3dDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&texDesc,
+			D3D12_RESOURCE_STATE_COMMON,
+			nullptr,
+			IID_PPV_ARGS(&mRenderTex)
+		));
+	}
 }
