@@ -66,6 +66,9 @@
     <ClCompile Include="App_Shadow.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="App_InvertColor.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Common\Camera.h">
