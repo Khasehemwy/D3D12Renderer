@@ -36,5 +36,5 @@ VertexOut VS(VertexIn vin)
 
 float4 PS(VertexOut pin) : SV_TARGET
 {
-    return float4(pin.color.rgb, pin.posProj.z);
+    return float4(pin.color.rgb, pin.posProj.z / pin.posProj.w);
 };

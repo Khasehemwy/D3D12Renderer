@@ -29,12 +29,15 @@ float4 PS(VertexOut pin): SV_TARGET
     float4 color;
     float4 colorGrid0 = gTex[0].Sample(gSampler, pin.uv);
     float4 colorGrid1 = gTex[1].Sample(gSampler, pin.uv);
+    
+    // let colorGrid0 always deeper
     if (colorGrid0.a < colorGrid1.a)
     {
         float4 temp = colorGrid0;
         colorGrid0 = colorGrid1;
         colorGrid1 = temp;
     }
+    
     if (colorGrid0.r != 0 && colorGrid0.g != 0 && colorGrid0.b != 0
         && colorGrid1.r != 0 && colorGrid1.g != 0 && colorGrid1.b != 0)
     {

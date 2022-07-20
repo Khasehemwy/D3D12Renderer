@@ -68,10 +68,10 @@ public:
 	UINT64 Fence = 0;
 };
 
-class UAVTexture :public RenderTexture
+class SRVTexture :public RenderTexture
 {
 public:
-	UAVTexture(ID3D12Device* device,
+	SRVTexture(ID3D12Device* device,
 		UINT width, UINT height,
 		DXGI_FORMAT format,
 		D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)
@@ -80,7 +80,7 @@ public:
 
 	virtual void BuildDescriptors()override;
 };
-void UAVTexture::BuildDescriptors()
+void SRVTexture::BuildDescriptors()
 {
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -102,7 +102,7 @@ public:
 	virtual void Draw(const GameTimer& gt)override;
 private:
 
-	std::vector<std::unique_ptr<UAVTexture>> mTexs;
+	std::vector<std::unique_ptr<SRVTexture>> mTexs;
 
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
 	ComPtr<ID3D12RootSignature> mRootSignaturePresent = nullptr;
@@ -171,12 +171,12 @@ bool InvertColor::Initialize()
 {
 	if (!MyApp::Initialize())return false;
 
-	mTexs.push_back(std::make_unique<UAVTexture>(
+	mTexs.push_back(std::make_unique<SRVTexture>(
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
 		DXGI_FORMAT_R8G8B8A8_UNORM));
 
-	mTexs.push_back(std::make_unique<UAVTexture>(
+	mTexs.push_back(std::make_unique<SRVTexture>(
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
 		DXGI_FORMAT_R8G8B8A8_UNORM));
