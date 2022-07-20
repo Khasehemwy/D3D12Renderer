@@ -4,10 +4,10 @@
 //
 // Resource Bindings:
 //
-// Name                                 Type  Format         Dim      HLSL Bind  Count
-// ------------------------------ ---------- ------- ----------- -------------- ------
-// gTex                              texture  float4          2d             t0      1 
-// gOutput                               UAV  float4          2d             u0      1 
+// Name                                 Type  Format         Dim      ID      HLSL Bind  Count
+// ------------------------------ ---------- ------- ----------- ------- -------------- ------
+// gTex                              texture  float4          2d      T0             t0      1 
+// gOutput                               UAV  float4          2d      U0             u0      1 
 //
 //
 //
@@ -22,11 +22,10 @@
 // Name                 Index   Mask Register SysValue  Format   Used
 // -------------------- ----- ------ -------- -------- ------- ------
 // no Output
-cs_5_0
+cs_5_1
 dcl_globalFlags refactoringAllowed | skipOptimization
-dcl_resource_texture2d (float,float,float,float) t0
-dcl_uav_typed_texture2d (float,float,float,float) u0
-dcl_input vThreadIDInGroup.x
+dcl_resource_texture2d (float,float,float,float) T0[0:0], space=0
+dcl_uav_typed_texture2d (float,float,float,float) U0[0:0], space=0
 dcl_input vThreadID.xy
 dcl_temps 6
 dcl_thread_group 256, 1, 1
@@ -39,81 +38,62 @@ dcl_thread_group 256, 1, 1
 mov r0.x, vThreadID.x  // r0.x <- dispatch_x
 
 #line 11
-mov r1.yzw, vThreadID.yyyy  // r1.w <- dispatch_y
+mov r0.yzw, vThreadID.yyyy  // r0.w <- dispatch_y
 
-#line 12
-mov r0.y, r1.w
-mov r0.zw, l(0,0,0,0)
-ld_indexable(texture2d)(float,float,float,float) r2.xyzw, r0.xyzw, t0.xyzw  // r2.x <- color.x; r2.y <- color.y; r2.z <- color.z; r2.w <- color.w
-
-#line 14
-mov r0.y, vThreadIDInGroup.x  // r0.y <- x
-
-#line 17
-mov r0.z, l(10)  // r0.z <- blurNum
+#line 13
+itof r1.xyzw, l(0, 0, 0, 1)  // r1.x <- color.x; r1.y <- color.y; r1.z <- color.z; r1.w <- color.w
 
 #line 18
-mov r0.w, l(0)  // r0.w <- totBlur
+mov r2.x, l(10)  // r2.x <- blurNum
 
 #line 19
-ineg r3.x, r0.z  // r3.x <- i
-mov r4.xyzw, r2.xyzw  // r4.x <- color.x; r4.y <- color.y; r4.z <- color.z; r4.w <- color.w
-mov r3.y, r0.w  // r3.y <- totBlur
-mov r3.z, r3.x  // r3.z <- i
-loop 
-  ilt r3.w, r3.z, r0.z
-  breakc_z r3.w
+mov r2.y, l(0)  // r2.y <- totBlur
 
 #line 20
-  iadd r3.w, r0.y, r3.z
-  ige r3.w, r3.w, l(256)
-  iadd r5.x, r0.y, r3.z
-  ilt r5.x, r5.x, l(0)
-  or r3.w, r3.w, r5.x
-  if_nz r3.w
-    iadd r3.z, r3.z, l(1)
-    continue 
-  endif 
-
-#line 21
-  iadd r3.w, r0.x, r3.z
-  resinfo_indexable(texture2d)(float,float,float,float)_uint r5.x, l(0), t0.xyzw
-  mov r5.y, l(1)
-  ineg r5.y, r5.y
-  iadd r5.x, r5.y, r5.x
-  uge r3.w, r5.x, r3.w
-  iadd r5.x, r0.x, r3.z
-  ilt r5.x, l(0), r5.x
-  and r3.w, r3.w, r5.x
-  if_nz r3.w
+ineg r2.z, r2.x  // r2.z <- i
+mov r3.xyzw, r1.xyzw  // r3.x <- color.x; r3.y <- color.y; r3.z <- color.z; r3.w <- color.w
+mov r2.w, r2.y  // r2.w <- totBlur
+mov r4.x, r2.z  // r4.x <- i
+loop 
+  ilt r4.y, r4.x, r2.x
+  breakc_z r4.y
 
 #line 22
-    iadd r3.y, r3.y, l(1)
+  iadd r4.y, r0.x, r4.x
+  resinfo_uint r4.z, l(0), T0[0].yzxw
+  mov r4.w, l(1)
+  ineg r4.w, r4.w
+  iadd r4.z, r4.w, r4.z
+  uge r4.y, r4.z, r4.y
+  iadd r4.z, r0.x, r4.x
+  ilt r4.z, l(0), r4.z
+  and r4.y, r4.z, r4.y
+  if_nz r4.y
 
 #line 23
-    iadd r5.x, r0.x, r3.z
-    mov r5.y, r1.w
-    mov r5.zw, l(0,0,0,0)
-    ld_indexable(texture2d)(float,float,float,float) r5.xyzw, r5.xyzw, t0.xyzw
-    add r4.xyzw, r4.xyzw, r5.xyzw
+    iadd r2.w, r2.w, l(1)
 
 #line 24
-  endif 
-
-#line 19
-  iadd r3.z, r3.z, l(1)
+    iadd r5.x, r0.x, r4.x
+    mov r5.y, r0.w
+    mov r5.zw, l(0,0,0,0)
+    ld r5.xyzw, r5.xyzw, T0[0].xyzw
+    add r3.xyzw, r3.xyzw, r5.xyzw
 
 #line 25
-endloop 
+  endif 
 
 #line 26
-itof r2.xyzw, r3.yyyy
-div r2.xyzw, r4.xyzw, r2.xyzw  // r2.x <- color.x; r2.y <- color.y; r2.z <- color.z; r2.w <- color.w
+  iadd r4.x, r4.x, l(1)
+endloop 
 
-#line 28
-mov r1.x, r0.x
-store_uav_typed u0.xyzw, r1.xyzw, r2.xyzw
+#line 27
+itof r1.xyzw, r2.wwww
+div r1.xyzw, r3.xyzw, r1.xyzw  // r1.x <- color.x; r1.y <- color.y; r1.z <- color.z; r1.w <- color.w
 
 #line 29
+store_uav_typed U0[0].xyzw, r0.xyzw, r1.xyzw
+
+#line 30
 ret 
-// Approximately 48 instruction slots used
+// Approximately 35 instruction slots used

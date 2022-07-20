@@ -9,7 +9,8 @@ void CS(int3 groupThreadID : SV_GroupThreadID,
 {
 	int dispatch_x = dispatchThreadID.x;
 	int dispatch_y = dispatchThreadID.y;
-	float4 color = gTex[int2(dispatch_x, dispatch_y)];
+	//float4 color = gTex[int2(dispatch_x, dispatch_y)];
+    float4 color = float4(0, 0, 0, 1);
 
 	int x = groupThreadID.x;
 	int y = groupThreadID.y;
@@ -17,7 +18,7 @@ void CS(int3 groupThreadID : SV_GroupThreadID,
 	int blurNum = 10;
 	int totBlur = 0;
 	for (int i = -blurNum; i < blurNum; i++) {
-		if (x + i >= N || x + i < 0)continue;
+		//if (x + i >= N || x + i < 0)continue;
 		if (dispatch_x + i <= gTex.Length.x - 1 && dispatch_x + i > 0) {
 			totBlur++;
 			color += gTex[int2(dispatch_x + i, dispatch_y)];

@@ -7,6 +7,22 @@ using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
 
+class CustomTexture :public RenderTexture
+{
+public:
+	CustomTexture(ID3D12Device* device,
+		UINT width, UINT height,
+		DXGI_FORMAT format,
+		D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)
+		:RenderTexture(device, width, height, format, flag)
+	{};
+
+	virtual void BuildDescriptors()override;
+};
+void CustomTexture::BuildDescriptors()
+{
+}
+
 class BlurApp :public MyApp
 {
 public:
@@ -32,8 +48,8 @@ public:
 private:
 	void DrawBlurToRenderTex(const GameTimer& gt, ID3D12Resource* input);
 
-	std::unique_ptr<RenderTexture> renderTex = nullptr;
-	std::unique_ptr<RenderTexture> renderTexOut = nullptr;
+	std::unique_ptr<CustomTexture> renderTex = nullptr;
+	std::unique_ptr<CustomTexture> renderTexOut = nullptr;
 
 	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 	void LoadTextures();
@@ -95,11 +111,11 @@ bool BlurApp::Initialize()
 {
 	if (!MyApp::Initialize())return false;
 
-	renderTex = std::make_unique<RenderTexture>(
+	renderTex = std::make_unique<CustomTexture>(
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
 		DXGI_FORMAT_R8G8B8A8_UNORM);
-	renderTexOut = std::make_unique<RenderTexture>(
+	renderTexOut = std::make_unique<CustomTexture>(
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
 		DXGI_FORMAT_R8G8B8A8_UNORM);
