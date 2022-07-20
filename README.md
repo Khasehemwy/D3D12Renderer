@@ -42,7 +42,7 @@ Simply draw the box. It shows the project structure.
   
 现代实现方式的实例化。  
   
-与OpenGL在绘制命令时传入Transform信息不同，现代的实现方式为将所有Transform信息传入Shader，再根据InstanceID来使用对应Transform Data。  
+与OpenGL在绘制命令时传入Transform信息不同，现代的实现方式为将所有Transform信息传入Shader的结构化缓冲区，再根据InstanceID来使用对应Transform Data。  
   
 <image src="https://user-images.githubusercontent.com/57032017/179747814-5b177533-28eb-4b41-9288-6199c5a8e196.gif" width="70%">  
   
@@ -77,7 +77,9 @@ Simply draw the box. It shows the project structure.
 2. 将Texture0作为SRV传入CS，并在CS中进行模糊操作，写入到作为UAV的Texture1中。  
 3. 将Texture1作为SRV，渲染到整个窗口。  
   
-**注意事项：** 难点主要为CS的编写，dispatchThreadID可以理解为全局的ID，groupThreadID可以理解为局部的ID。  
+**注意事项：** 
+1. 难点主要为CS的编写，dispatchThreadID可以理解为全局的ID，groupThreadID可以理解为局部的ID。
+2. 注意在已经设置过PSO的基础上，设置新的PSO时，需要使用SetPipelineState()代替Reset()。
   
 <image src="https://user-images.githubusercontent.com/57032017/179885809-55a19e3d-be6d-4b1b-89ba-d7a4a51b447f.png" width="60%">   
   
@@ -102,3 +104,19 @@ Simply draw the box. It shows the project structure.
 可以结合模板测试、深度测试、后处理，达到最佳效果。  
   
 <image src="https://user-images.githubusercontent.com/57032017/179895040-588d1beb-2c17-4eb0-8007-1671bd530f93.gif" width="70%">   
+  
+  
+  
+## Shadow  
+  
+[App_Shadow](./Project1/App_Shadow.cpp)  
+  
+使用ShadowMap实现的阴影。  
+  
+**思路：** 分为2个Pass。第一个Pass1从光源视角渲染场景，并存入Texture中作为ShadowMap。第二个Pass2中，将顶点坐标变换到光源空间，再使用ShadowMap采样确定可见性。思路不算复杂，但实现较繁琐。这里添加第三个Pass3将ShadowMap渲染至屏幕右下角。    
+  
+**注意事项：**  
+1. 从光源渲染场景可以先渲染到BackBuffer再Copy到Resource，也可以直接将Resource作为DSV，渲染时绑定该DSV。
+2. DSV创建时，Flag和Format必须对应，否则会出错。  
+  
+<image src="https://user-images.githubusercontent.com/57032017/179924409-85e6d768-7281-40c3-9fc4-c6f206f3d4c3.gif" width="70%">  
