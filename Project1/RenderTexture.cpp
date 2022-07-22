@@ -50,14 +50,31 @@ void RenderTexture::BuildDescriptors(
 	BuildDescriptors();
 }
 
-CD3DX12_CPU_DESCRIPTOR_HANDLE RenderTexture::Srv() const
+void RenderTexture::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv, CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv, CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuDsv, CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuRtv)
 {
-	return mhCpuSrv;
+	// Save references to the descriptors. 
+	mhCpuSrv = hCpuSrv;
+	mhGpuSrv = hGpuSrv;
+	mhCpuDsv = hCpuDsv;
+	mhCpuRtv = hCpuRtv;
+
+	//  Create the descriptors
+	BuildDescriptors();
+}
+
+CD3DX12_GPU_DESCRIPTOR_HANDLE RenderTexture::Srv() const
+{
+	return mhGpuSrv;
 }
 
 CD3DX12_CPU_DESCRIPTOR_HANDLE RenderTexture::Dsv() const
 {
 	return mhCpuDsv;
+}
+
+CD3DX12_CPU_DESCRIPTOR_HANDLE RenderTexture::Rtv() const
+{
+	return mhCpuRtv;
 }
 
 D3D12_VIEWPORT RenderTexture::Viewport() const
@@ -115,6 +132,19 @@ void RenderTexture::BuildResources()
 			&texDesc,
 			D3D12_RESOURCE_STATE_COMMON,
 			&optClear,
+			IID_PPV_ARGS(&mRenderTex)
+		));
+	}
+
+	else if (texDesc.Flags == D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) {
+		// as RTV
+
+		ThrowIfFailed(md3dDevice->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+			D3D12_HEAP_FLAG_NONE,
+			&texDesc,
+			D3D12_RESOURCE_STATE_COMMON,
+			nullptr,
 			IID_PPV_ARGS(&mRenderTex)
 		));
 	}
