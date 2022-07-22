@@ -8,6 +8,7 @@ using namespace DirectX;
 using namespace DirectX::PackedVector;
 
 const int gNumFrameResources = 1;
+const int gNumTex = 2;
 
 struct Vertex
 {
@@ -68,10 +69,10 @@ public:
 	UINT64 Fence = 0;
 };
 
-class SRVTexture :public RenderTexture
+class SrvRtvTexture :public RenderTexture
 {
 public:
-	SRVTexture(ID3D12Device* device,
+	SrvRtvTexture(ID3D12Device* device,
 		UINT width, UINT height,
 		DXGI_FORMAT format,
 		D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS)
@@ -80,16 +81,18 @@ public:
 
 	virtual void BuildDescriptors()override;
 };
-void SRVTexture::BuildDescriptors()
+void SrvRtvTexture::BuildDescriptors()
 {
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-	srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
 	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.MipLevels = 1;
-
 	md3dDevice->CreateShaderResourceView(mRenderTex.Get(), &srvDesc, mhCpuSrv);
+
+
+	md3dDevice->CreateRenderTargetView(mRenderTex.Get(), nullptr, mhCpuRtv);
 }
 
 class InvertColor :public MyApp
@@ -101,8 +104,9 @@ public:
 	virtual void Update(const GameTimer& gt)override;
 	virtual void Draw(const GameTimer& gt)override;
 private:
+	void CreateRtvAndDsvDescriptorHeaps()override;
 
-	std::vector<std::unique_ptr<SRVTexture>> mTexs;
+	std::vector<std::unique_ptr<SrvRtvTexture>> mTexs;
 
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
 	ComPtr<ID3D12RootSignature> mRootSignaturePresent = nullptr;
@@ -171,15 +175,17 @@ bool InvertColor::Initialize()
 {
 	if (!MyApp::Initialize())return false;
 
-	mTexs.push_back(std::make_unique<SRVTexture>(
+	mTexs.push_back(std::make_unique<SrvRtvTexture>(
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
-		DXGI_FORMAT_R8G8B8A8_UNORM));
+		DXGI_FORMAT_R32G32B32A32_FLOAT,
+		D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET));
 
-	mTexs.push_back(std::make_unique<SRVTexture>(
+	mTexs.push_back(std::make_unique<SrvRtvTexture>(
 		md3dDevice.Get(),
 		mClientWidth, mClientHeight,
-		DXGI_FORMAT_R8G8B8A8_UNORM));
+		DXGI_FORMAT_R32G32B32A32_FLOAT,
+		D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET));
 
 	mCamera.SetPosition(XMFLOAT3(0, 5, -10));
 
@@ -272,17 +278,23 @@ void InvertColor::Draw(const GameTimer& gt)
 
 	// draw grid0
 	{
+		//mCommandList->ResourceBarrier(
+		//	1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		//		CurrentBackBuffer(),
+		//		D3D12_RESOURCE_STATE_PRESENT,
+		//		D3D12_RESOURCE_STATE_RENDER_TARGET)
+		//);
 		mCommandList->ResourceBarrier(
 			1, &CD3DX12_RESOURCE_BARRIER::Transition(
-				CurrentBackBuffer(),
-				D3D12_RESOURCE_STATE_PRESENT,
+				mTexs[0]->Output(),
+				D3D12_RESOURCE_STATE_COMMON,
 				D3D12_RESOURCE_STATE_RENDER_TARGET)
 		);
 
-		mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::Black, 0, nullptr);
+		mCommandList->ClearRenderTargetView(mTexs[0]->Rtv(), Colors::Black, 0, nullptr);
 		mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-		mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+		mCommandList->OMSetRenderTargets(1, &mTexs[0]->Rtv(), false, &DepthStencilView());
 
 		ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
 		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
@@ -297,39 +309,51 @@ void InvertColor::Draw(const GameTimer& gt)
 		std::vector<RenderItem*>ritemGrid0{ mOpaqueRenderitems[0] };
 		DrawRenderItems(mCommandList.Get(), ritemGrid0);
 
-
-		mCommandList->ResourceBarrier(
-			1, &CD3DX12_RESOURCE_BARRIER::Transition(
-				CurrentBackBuffer(),
-				D3D12_RESOURCE_STATE_RENDER_TARGET,
-				D3D12_RESOURCE_STATE_COPY_SOURCE)
-		);
 		mCommandList->ResourceBarrier(
 			1, &CD3DX12_RESOURCE_BARRIER::Transition(
 				mTexs[0]->Output(),
-				D3D12_RESOURCE_STATE_COMMON,
-				D3D12_RESOURCE_STATE_COPY_DEST)
+				D3D12_RESOURCE_STATE_RENDER_TARGET,
+				D3D12_RESOURCE_STATE_COMMON)
 		);
 
-		mCommandList->CopyResource(mTexs[0]->Output(), CurrentBackBuffer());
+		//mCommandList->ResourceBarrier(
+		//	1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		//		CurrentBackBuffer(),
+		//		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		//		D3D12_RESOURCE_STATE_COPY_SOURCE)
+		//);
+		//mCommandList->ResourceBarrier(
+		//	1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		//		mTexs[0]->Output(),
+		//		D3D12_RESOURCE_STATE_COMMON,
+		//		D3D12_RESOURCE_STATE_COPY_DEST)
+		//);
 
-		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-			D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT));
+		//mCommandList->CopyResource(mTexs[0]->Output(), CurrentBackBuffer());
+
+		//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+		//	D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT));
 	}
 
 	// draw grid1
 	{
+		//mCommandList->ResourceBarrier(
+		//	1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		//		CurrentBackBuffer(),
+		//		D3D12_RESOURCE_STATE_PRESENT,
+		//		D3D12_RESOURCE_STATE_RENDER_TARGET)
+		//);
 		mCommandList->ResourceBarrier(
 			1, &CD3DX12_RESOURCE_BARRIER::Transition(
-				CurrentBackBuffer(),
-				D3D12_RESOURCE_STATE_PRESENT,
+				mTexs[1]->Output(),
+				D3D12_RESOURCE_STATE_COMMON,
 				D3D12_RESOURCE_STATE_RENDER_TARGET)
 		);
 
-		mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::Black, 0, nullptr);
+		mCommandList->ClearRenderTargetView(mTexs[1]->Rtv(), Colors::Black, 0, nullptr);
 		mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
-		mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+		mCommandList->OMSetRenderTargets(1, &mTexs[1]->Rtv(), true, &DepthStencilView());
 
 		ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
 		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
@@ -344,24 +368,30 @@ void InvertColor::Draw(const GameTimer& gt)
 		std::vector<RenderItem*>ritemGrid1{ mOpaqueRenderitems[1] };
 		DrawRenderItems(mCommandList.Get(), ritemGrid1);
 
-
-		mCommandList->ResourceBarrier(
-			1, &CD3DX12_RESOURCE_BARRIER::Transition(
-				CurrentBackBuffer(),
-				D3D12_RESOURCE_STATE_RENDER_TARGET,
-				D3D12_RESOURCE_STATE_COPY_SOURCE)
-		);
 		mCommandList->ResourceBarrier(
 			1, &CD3DX12_RESOURCE_BARRIER::Transition(
 				mTexs[1]->Output(),
-				D3D12_RESOURCE_STATE_COMMON,
-				D3D12_RESOURCE_STATE_COPY_DEST)
+				D3D12_RESOURCE_STATE_RENDER_TARGET,
+				D3D12_RESOURCE_STATE_COMMON)
 		);
 
-		mCommandList->CopyResource(mTexs[1]->Output(), CurrentBackBuffer());
+		//mCommandList->ResourceBarrier(
+		//	1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		//		CurrentBackBuffer(),
+		//		D3D12_RESOURCE_STATE_RENDER_TARGET,
+		//		D3D12_RESOURCE_STATE_COPY_SOURCE)
+		//);
+		//mCommandList->ResourceBarrier(
+		//	1, &CD3DX12_RESOURCE_BARRIER::Transition(
+		//		mTexs[1]->Output(),
+		//		D3D12_RESOURCE_STATE_COMMON,
+		//		D3D12_RESOURCE_STATE_COPY_DEST)
+		//);
 
-		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-			D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT));
+		//mCommandList->CopyResource(mTexs[1]->Output(), CurrentBackBuffer());
+
+		//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+		//	D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT));
 	}
 
 	// present
@@ -412,6 +442,27 @@ void InvertColor::Draw(const GameTimer& gt)
 	mCurrFrameResource->Fence = ++mCurrentFence;
 
 	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
+}
+
+void InvertColor::CreateRtvAndDsvDescriptorHeaps()
+{
+	// Add +gNumTex RTV for Texs
+	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc;
+	rtvHeapDesc.NumDescriptors = SwapChainBufferCount + gNumTex * gNumFrameResources;
+	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	rtvHeapDesc.NodeMask = 0;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
+		&rtvHeapDesc, IID_PPV_ARGS(mRtvHeap.GetAddressOf())));
+
+	// Common creation.
+	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc;
+	dsvHeapDesc.NumDescriptors = 1;
+	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	dsvHeapDesc.NodeMask = 0;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
+		&dsvHeapDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
 }
 
 void InvertColor::BuildFrameResources()
@@ -737,12 +788,14 @@ void InvertColor::BuildBuffers()
 
 				auto srvCpuStart = mPresentHeap->GetCPUDescriptorHandleForHeapStart();
 				auto srvGpuStart = mPresentHeap->GetGPUDescriptorHandleForHeapStart();
+				auto rtvCpuStart = mRtvHeap->GetCPUDescriptorHandleForHeapStart();
 
 				for (int i = 0; i < mTexs.size(); i++) {
 					mTexs[i]->RenderTexture::BuildDescriptors(
 						CD3DX12_CPU_DESCRIPTOR_HANDLE(srvCpuStart, mTexOffset + i + frameIndex, mCbvSrvUavDescriptorSize),
 						CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mTexOffset + i + frameIndex, mCbvSrvUavDescriptorSize),
-						CD3DX12_CPU_DESCRIPTOR_HANDLE());
+						CD3DX12_CPU_DESCRIPTOR_HANDLE(),
+						CD3DX12_CPU_DESCRIPTOR_HANDLE(rtvCpuStart, SwapChainBufferCount + i + frameIndex, mRtvDescriptorSize));
 				}
 			}
 		}
