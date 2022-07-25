@@ -829,7 +829,7 @@ void InvertColor::BuildPSOs()
 	opaquePsoDesc.SampleMask = UINT_MAX;
 	opaquePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
 	opaquePsoDesc.NumRenderTargets = 1;
-	opaquePsoDesc.RTVFormats[0] = mBackBufferFormat;
+	opaquePsoDesc.RTVFormats[0] = mTexs[0]->Format();
 	opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
 	opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 	opaquePsoDesc.DSVFormat = mDepthStencilFormat;
@@ -853,6 +853,9 @@ void InvertColor::BuildPSOs()
 			reinterpret_cast<BYTE*>(mShaders["presentPS"]->GetBufferPointer()),
 			mShaders["presentPS"]->GetBufferSize()
 		};
+		presentPsoDesc.NumRenderTargets = 1;
+		presentPsoDesc.RTVFormats[0] = mBackBufferFormat;
+
 		md3dDevice->CreateGraphicsPipelineState(&presentPsoDesc, IID_PPV_ARGS(&mPSOs["present"]));
 	}
 }

@@ -138,13 +138,15 @@ void RenderTexture::BuildResources()
 
 	else if (texDesc.Flags == D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET) {
 		// as RTV
+		D3D12_CLEAR_VALUE clearValue = { mFormat, {} };
+		memcpy(clearValue.Color, DirectX::Colors::Black, sizeof(clearValue.Color));
 
 		ThrowIfFailed(md3dDevice->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 			D3D12_HEAP_FLAG_NONE,
 			&texDesc,
 			D3D12_RESOURCE_STATE_COMMON,
-			nullptr,
+			&clearValue,
 			IID_PPV_ARGS(&mRenderTex)
 		));
 	}
