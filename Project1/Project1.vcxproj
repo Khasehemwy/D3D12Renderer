@@ -78,6 +78,8 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>../lib/include/;$(IncludePath)</IncludePath>
+    <LibraryPath>../lib/;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -165,9 +167,13 @@
     <ClCompile Include="App_InvertColor.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </ClCompile>
-    <ClCompile Include="App_Shadow.cpp">
+    <ClCompile Include="App_LoadModel.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="App_Shadow.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="Model.cpp" />
     <ClCompile Include="MyApp.cpp" />
     <ClCompile Include="RenderTexture.cpp" />
     <ClCompile Include="App_shapesIn3Frame.cpp">
@@ -192,6 +198,7 @@
     <ClInclude Include="..\..\Common\GeometryGenerator.h" />
     <ClInclude Include="..\..\Common\MathHelper.h" />
     <ClInclude Include="..\..\Common\UploadBuffer.h" />
+    <ClInclude Include="Model.h" />
     <ClInclude Include="MyApp.h" />
     <ClInclude Include="RenderTexture.h" />
   </ItemGroup>

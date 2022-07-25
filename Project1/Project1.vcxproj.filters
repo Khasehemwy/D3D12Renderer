@@ -69,6 +69,12 @@
     <ClCompile Include="App_InvertColor.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="App_LoadModel.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Model.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Common\Camera.h">
@@ -102,6 +108,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="RenderTexture.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Model.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
