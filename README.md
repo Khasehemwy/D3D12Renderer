@@ -10,7 +10,9 @@ The project implements the various rendering effects.
   
 [D3D12Book - Common](https://github.com/d3dcoder/d3d12book/tree/master/Common)。将`Common`文件夹放置于`../../`目录下（相对于项目中`.cpp`文件的位置）。  
   
-[PIX](https://devblogs.microsoft.com/pix/download/)。若在`Debug`下运行，需安装`PIX`或注释相应代码。（PIX为截帧工具，方便Debug）
+[PIX](https://devblogs.microsoft.com/pix/download/)。若在`Debug`下运行，需安装`PIX`或注释相应代码。（PIX为截帧工具，方便Debug）  
+  
+[Visual Studio 2022](visualstudio.microsoft.com)。VS版本可能会影响模型加载库assimp。
   
   
 ## APP
