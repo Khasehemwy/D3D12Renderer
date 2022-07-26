@@ -18,22 +18,30 @@ public:
     Model(
         string name, 
         string path,
-        std::unique_ptr<Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList>> pCommandList)
+        ID3D12Device* pDevice,
+        ID3D12GraphicsCommandList* pCommandList)
     {
-        mpCommandList = std::move(pCommandList);
         mGeo.Name = name;
-        LoadModel(path);
+        LoadModel(path, pDevice, pCommandList);
     }
+
+    const MeshGeometry* Geo();
 
 private:
     /*  模型数据  */
     MeshGeometry mGeo;
     vector<GeometryGenerator::MeshData> mMeshes;
     string mDirectory;
-    std::unique_ptr<Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList>> mpCommandList;
 
-    void LoadModel(string path);
-    void ProcessGeo();
+    void LoadModel(
+        string path,
+        ID3D12Device* pDevice,
+        ID3D12GraphicsCommandList* pCommandList);
+
+    void ProcessGeo(
+        ID3D12Device* pDevice,
+        ID3D12GraphicsCommandList* pCommandList);
+
     void ProcessNode(aiNode* node, const aiScene* scene);
     GeometryGenerator::MeshData ProcessMesh(aiMesh* mesh, const aiScene* scene);
 };

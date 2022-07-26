@@ -3,25 +3,35 @@
 #include "../../Common/MathHelper.h"
 #include <iostream>
 
-void Model::LoadModel(string path)
+const MeshGeometry* Model::Geo()
+{
+	return &mGeo;
+}
+
+void Model::LoadModel(
+	string path,
+	ID3D12Device* pDevice,
+	ID3D12GraphicsCommandList* pCommandList)
 {
 	Assimp::Importer import;
 	const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
-		std::cout << "ERROR::ASSIMP::" << import.GetErrorString() << std::endl;
-		return;
+		string err = (string)"ERROR::ASSIMP::" + import.GetErrorString() + "\n";
+		throw std::invalid_argument(err);
 	}
 
 	mDirectory = path.substr(0, path.find_last_of('/'));
 
 	ProcessNode(scene->mRootNode, scene);
 
-	ProcessGeo();
+	ProcessGeo(pDevice, pCommandList);
 }
 
-void Model::ProcessGeo()
+void Model::ProcessGeo(
+	ID3D12Device* pDevice,
+	ID3D12GraphicsCommandList* pCommandList)
 {
 	int totalVertexCount = 0;
 	for (auto& meshData : mMeshes) {
@@ -29,24 +39,49 @@ void Model::ProcessGeo()
 	}
 
 	std::vector<GeometryGenerator::Vertex> vertices(totalVertexCount);
+	std::vector<std::uint16_t> indices;
 	UINT k = 0;
+	UINT meshId = 0;
+	UINT indexOffset = 0, vertexOffset = 0;
 	for (auto& meshData : mMeshes) {
+
 		for (size_t i = 0; i < meshData.Vertices.size(); ++i, ++k)
 		{
-			vertices[k].pos = box.Vertices[i].Position;
-			vertices[k].color = XMFLOAT4(DirectX::Colors::DarkGreen);
+			vertices[k] = meshData.Vertices[i];
 		}
+
+		indices.insert(indices.end(), std::begin(meshData.GetIndices16()), std::end(meshData.GetIndices16()));
+
+		SubmeshGeometry submesh;
+		submesh.IndexCount = (UINT)meshData.Indices32.size();
+		submesh.StartIndexLocation = indexOffset;
+		submesh.BaseVertexLocation = vertexOffset;
+		mGeo.DrawArgs[std::to_string(meshId++)] = submesh;
+
+		indexOffset += meshData.Indices32.size();
+		vertexOffset += meshData.Vertices.size();
 	}
 
 
-	const UINT vbByteSize = (UINT)m.size() * sizeof(GeometryGenerator::Vertex);
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(GeometryGenerator::Vertex);
 	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
-	D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU);
-	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+	D3DCreateBlob(vbByteSize, &mGeo.VertexBufferCPU);
+	CopyMemory(mGeo.VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
 
-	D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU);
-	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+	D3DCreateBlob(ibByteSize, &mGeo.IndexBufferCPU);
+	CopyMemory(mGeo.IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	mGeo.VertexBufferGPU = d3dUtil::CreateDefaultBuffer(pDevice,
+		pCommandList, vertices.data(), vbByteSize, mGeo.VertexBufferUploader);
+
+	mGeo.IndexBufferGPU = d3dUtil::CreateDefaultBuffer(pDevice,
+		pCommandList, indices.data(), ibByteSize, mGeo.IndexBufferUploader);
+
+	mGeo.VertexByteStride = sizeof(GeometryGenerator::Vertex);
+	mGeo.VertexBufferByteSize = vbByteSize;
+	mGeo.IndexFormat = DXGI_FORMAT_R16_UINT;
+	mGeo.IndexBufferByteSize = ibByteSize;
 }
 
 void Model::ProcessNode(aiNode* node, const aiScene* scene)
