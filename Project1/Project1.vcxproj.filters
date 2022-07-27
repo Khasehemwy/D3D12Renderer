@@ -66,9 +66,6 @@
     <ClCompile Include="App_Shadow.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="App_InvertColor.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="App_LoadModel.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -76,6 +73,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="App_SSAO.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="App_InvertColor.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

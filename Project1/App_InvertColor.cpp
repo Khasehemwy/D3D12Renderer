@@ -519,8 +519,8 @@ void InvertColor::BuildRootSignature()
 		auto staticSamplers = GetStaticSamplers();
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
-			sizeof(slotRootParameter)/sizeof(CD3DX12_ROOT_PARAMETER),
-			slotRootParameter, 
+			sizeof(slotRootParameter) / sizeof(CD3DX12_ROOT_PARAMETER),
+			slotRootParameter,
 			(UINT)staticSamplers.size(), staticSamplers.data(),
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
 		);
