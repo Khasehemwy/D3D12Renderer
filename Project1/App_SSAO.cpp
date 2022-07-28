@@ -4,6 +4,7 @@
 #include "MyApp.h"
 #include "Model.h"
 #include "RenderTexture.h"
+#include "DebugViewer.h"
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
@@ -198,6 +199,10 @@ public:
 	virtual void Update(const GameTimer& gt)override;
 	virtual void Draw(const GameTimer& gt)override;
 private:
+	std::unique_ptr<DebugViewer> mDebugViewerNormal;
+	std::unique_ptr<DebugViewer> mDebugViewerZ;
+	std::unique_ptr<DebugViewer> mDebugViewerSsaoMap;
+
 	virtual void CreateRtvAndDsvDescriptorHeaps()override;
 
 	std::array<std::unique_ptr<RenderTexture>, gNumGBuffer>mGbuffer;
@@ -332,6 +337,17 @@ bool SSAO::Initialize()
 	mSsaoMap = std::move(ssaoMap);
 	mRandomVectorMap = std::move(randomVectorMap);
 
+	//mDebugViewerNormal = std::make_unique<DebugViewer>(md3dDevice, mCommandList, mBackBufferFormat, mCbvSrvUavDescriptorSize, gNumFrameResources);
+	//mDebugViewerNormal->SetTexSrv(mGbuffer[0]->Format(), mGbuffer[0]->Output());
+	//mDebugViewerNormal->SetPosition(DebugViewer::Position::Bottom0);
+
+	mDebugViewerZ = std::make_unique<DebugViewer>(md3dDevice, mCommandList, mBackBufferFormat, mCbvSrvUavDescriptorSize, gNumFrameResources);
+	mDebugViewerZ->SetTexSrv(mGbuffer[0]->Format(), mGbuffer[0]->Output());
+	mDebugViewerZ->SetPosition(DebugViewer::Position::Bottom1);
+
+	//mDebugViewerSsaoMap = std::make_unique<DebugViewer>(md3dDevice, mCommandList, mBackBufferFormat, mCbvSrvUavDescriptorSize, gNumFrameResources);
+	//mDebugViewerSsaoMap->SetTexSrv(mSsaoMap->Format(), mSsaoMap->Output());
+	//mDebugViewerSsaoMap->SetPosition(DebugViewer::Position::Bottom2);
 
 	mCamera.SetPosition(XMFLOAT3(0, 5, -50));
 
@@ -439,7 +455,6 @@ void SSAO::Draw(const GameTimer& gt)
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 	cmdListAlloc->Reset();
 
-
 	// gen gbuffer
 	{
 		mCommandList->Reset(cmdListAlloc.Get(), mPSOs["gbuffer"].Get());
@@ -530,6 +545,38 @@ void SSAO::Draw(const GameTimer& gt)
 			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COMMON));
 	}
 
+	// debug view
+	{
+		//{
+		//	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mGbuffer[0]->Output(),
+		//		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_GENERIC_READ));
+
+		//	mDebugViewerNormal->Draw(CurrentBackBufferView(), mCurrFrameResourceIndex);
+
+		//	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mGbuffer[0]->Output(),
+		//		D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COMMON));
+		//}
+
+		{
+			mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mGbuffer[0]->Output(),
+				D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_GENERIC_READ));
+
+			mDebugViewerZ->Draw(CurrentBackBufferView(), mCurrFrameResourceIndex);
+
+			mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mGbuffer[0]->Output(),
+				D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COMMON));
+		}
+
+		//{
+		//	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSsaoMap->Output(),
+		//		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_GENERIC_READ));
+
+		//	mDebugViewerSsaoMap->Draw(CurrentBackBufferView(), mCurrFrameResourceIndex);
+
+		//	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSsaoMap->Output(),
+		//		D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COMMON));
+		//}
+	}
 
 
 	mCommandList->Close();
@@ -809,6 +856,9 @@ void SSAO::BuildBuffers()
 		auto dsvCpuStart = mDsvHeap->GetCPUDescriptorHandleForHeapStart();
 		auto rtvCpuStart = mRtvHeap->GetCPUDescriptorHandleForHeapStart();
 
+		auto ssaoSrvCpuStart = mHeapSsaoMap->GetCPUDescriptorHandleForHeapStart();
+		auto ssaoSrvGpuStart = mHeapSsaoMap->GetGPUDescriptorHandleForHeapStart();
+
 		auto normalBuffer = std::move(mGbuffer[0]);
 		auto zBuffer = std::move(mGbuffer[1]);
 		for (int frameIndex = 0; frameIndex < gNumFrameResources; frameIndex++) {
@@ -825,14 +875,14 @@ void SSAO::BuildBuffers()
 				CD3DX12_CPU_DESCRIPTOR_HANDLE());
 
 			mSsaoMap->RenderTexture::BuildDescriptors(
-				CD3DX12_CPU_DESCRIPTOR_HANDLE(srvCpuStart, mSsaoMapSrvOffset + frameIndex, mCbvSrvUavDescriptorSize),
-				CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mSsaoMapSrvOffset + frameIndex, mCbvSrvUavDescriptorSize),
+				CD3DX12_CPU_DESCRIPTOR_HANDLE(ssaoSrvCpuStart, mSsaoMapSrvOffset + frameIndex, mCbvSrvUavDescriptorSize),
+				CD3DX12_GPU_DESCRIPTOR_HANDLE(ssaoSrvGpuStart, mSsaoMapSrvOffset + frameIndex, mCbvSrvUavDescriptorSize),
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(),
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(rtvCpuStart, mSsaoMapRtvOffset + frameIndex, mRtvDescriptorSize));
 
 			mRandomVectorMap->RenderTexture::BuildDescriptors(
-				CD3DX12_CPU_DESCRIPTOR_HANDLE(srvCpuStart, mRandomVectorMapSrvOffset + frameIndex, mCbvSrvUavDescriptorSize),
-				CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mRandomVectorMapSrvOffset + frameIndex, mCbvSrvUavDescriptorSize),
+				CD3DX12_CPU_DESCRIPTOR_HANDLE(ssaoSrvCpuStart, mRandomVectorMapSrvOffset + frameIndex, mCbvSrvUavDescriptorSize),
+				CD3DX12_GPU_DESCRIPTOR_HANDLE(ssaoSrvGpuStart, mRandomVectorMapSrvOffset + frameIndex, mCbvSrvUavDescriptorSize),
 				CD3DX12_CPU_DESCRIPTOR_HANDLE(),
 				CD3DX12_CPU_DESCRIPTOR_HANDLE());
 		}

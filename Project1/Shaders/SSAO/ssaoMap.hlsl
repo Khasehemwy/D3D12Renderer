@@ -61,9 +61,7 @@ float OcclusionFunction(float disZ)
     return occlusion;
 }
 
-VertexOut
-    VS(
-    uint vid : SV_VertexID)
+VertexOut VS(uint vid : SV_VertexID)
 {
     VertexOut vout;
     
