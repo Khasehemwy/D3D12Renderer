@@ -319,11 +319,13 @@ bool SSAO::Initialize()
 {
 	if (!MyApp::Initialize())return false;
 
+	int bufferSizePlus = 100;
+
 	std::unique_ptr<RenderTexture>normalBuffer =
-		std::make_unique<NormalBuffer>(md3dDevice.Get(), mClientWidth, mClientHeight);
+		std::make_unique<NormalBuffer>(md3dDevice.Get(), mClientWidth + bufferSizePlus, mClientHeight + bufferSizePlus);
 
 	std::unique_ptr<RenderTexture>zBuffer =
-		std::make_unique<ZBuffer>(md3dDevice.Get(), mClientWidth, mClientHeight);
+		std::make_unique<ZBuffer>(md3dDevice.Get(), mClientWidth + bufferSizePlus, mClientHeight + bufferSizePlus);
 
 	std::unique_ptr<SsaoMap>ssaoMap =
 		std::make_unique<SsaoMap>(md3dDevice.Get(), mClientWidth, mClientHeight);
@@ -461,8 +463,8 @@ void SSAO::Draw(const GameTimer& gt)
 	{
 		mCommandList->Reset(cmdListAlloc.Get(), mPSOs["gbuffer"].Get());
 
-		mCommandList->RSSetViewports(1, &mScreenViewport);
-		mCommandList->RSSetScissorRects(1, &mScissorRect);
+		mCommandList->RSSetViewports(1, &mGbuffer[0]->Viewport());
+		mCommandList->RSSetScissorRects(1, &mGbuffer[0]->ScissorRect());
 
 		auto normalBuffer = std::move(mGbuffer[0]);
 		auto zBuffer = std::move(mGbuffer[1]);
@@ -500,6 +502,9 @@ void SSAO::Draw(const GameTimer& gt)
 
 	// gen ssao map
 	{
+		mCommandList->RSSetViewports(1, &mSsaoMap->Viewport());
+		mCommandList->RSSetScissorRects(1, &mSsaoMap->ScissorRect());
+
 		mCommandList->SetPipelineState(mPSOs["ssaoMap"].Get());
 
 		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSsaoMap->Output(),
