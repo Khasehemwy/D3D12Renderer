@@ -23,7 +23,7 @@ public:
 
 	void Draw(D3D12_CPU_DESCRIPTOR_HANDLE rtv, UINT frameIndex);
 
-	void SetTexSrv(DXGI_FORMAT format, Microsoft::WRL::ComPtr<ID3D12Resource> tex);
+	void SetTexSrv(Microsoft::WRL::ComPtr<ID3D12Resource> tex, DXGI_FORMAT format);
 
 	void SetPosition(DebugViewer::Position pos = DebugViewer::Position::Bottom3);
 

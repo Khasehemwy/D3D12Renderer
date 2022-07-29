@@ -47,7 +47,9 @@ void DebugViewer::Draw(D3D12_CPU_DESCRIPTOR_HANDLE rtv, UINT frameIndex)
 	mCommandList->DrawInstanced(6, 1, 0, 0);
 }
 
-void DebugViewer::SetTexSrv(DXGI_FORMAT format, Microsoft::WRL::ComPtr<ID3D12Resource> tex)
+void DebugViewer::SetTexSrv(
+	Microsoft::WRL::ComPtr<ID3D12Resource> tex, 
+	DXGI_FORMAT format)
 {
 	auto mhCpuSrv = CD3DX12_CPU_DESCRIPTOR_HANDLE(mDescriptorHeap->GetCPUDescriptorHandleForHeapStart());
 	mhCpuSrv.Offset(mTexOffset, mCbvSrvUavDescriptorSize);
@@ -61,6 +63,13 @@ void DebugViewer::SetTexSrv(DXGI_FORMAT format, Microsoft::WRL::ComPtr<ID3D12Res
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
 	srvDesc.Texture2D.PlaneSlice = 0;
 	md3dDevice->CreateShaderResourceView(tex.Get(), &srvDesc, mhCpuSrv);
+}
+
+void DebugViewer::SetPosition(DebugViewer::Position pos)
+{
+	using namespace DirectX;
+
+	mPassData.posId = (UINT)pos;
 }
 
 void DebugViewer::BuildDescriptorHeaps()
@@ -152,13 +161,6 @@ void DebugViewer::BuildPSO()
 	psoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO)));
-}
-
-void DebugViewer::SetPosition(DebugViewer::Position pos)
-{
-	using namespace DirectX;
-
-	mPassData.posId = (UINT)pos;
 }
 
 void DebugViewer::BuildBuffer()
