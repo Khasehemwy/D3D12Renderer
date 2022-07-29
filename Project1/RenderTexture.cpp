@@ -11,6 +11,7 @@ RenderTexture::RenderTexture(
 	mWidth = width;
 	mHeight = height;
 	mFormat = format;
+	mSrvFormat = format;
 	mFlag = flag;
 
 	mViewport = { 0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f };
@@ -90,6 +91,16 @@ D3D12_RECT RenderTexture::ScissorRect() const
 DXGI_FORMAT RenderTexture::Format() const
 {
 	return mFormat;
+}
+
+DXGI_FORMAT RenderTexture::DsvFormat() const
+{
+	return mDsvFormat;
+}
+
+DXGI_FORMAT RenderTexture::SrvFormat() const
+{
+	return mSrvFormat;
 }
 
 D3D12_RESOURCE_FLAGS RenderTexture::Flag() const

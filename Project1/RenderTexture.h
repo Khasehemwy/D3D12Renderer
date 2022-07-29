@@ -34,6 +34,8 @@ public:
 	D3D12_RECT ScissorRect()const;
 
 	DXGI_FORMAT Format()const;
+	DXGI_FORMAT DsvFormat()const;
+	DXGI_FORMAT SrvFormat()const;
 	D3D12_RESOURCE_FLAGS Flag()const;
 
 protected:
@@ -48,6 +50,8 @@ protected:
 	D3D12_RECT mScissorRect;
 
 	DXGI_FORMAT mFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	DXGI_FORMAT mDsvFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	DXGI_FORMAT mSrvFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 	D3D12_RESOURCE_FLAGS mFlag;
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE mhCpuSrv;
