@@ -62,5 +62,5 @@ VertexOut VS(uint vid : SV_VertexID)
 
 float4 PS(VertexOut pin) : SV_TARGET
 {
-    return gTex.Sample(gSamPointWrap, pin.uv);
+    return float4(gTex.Sample(gSamPointWrap, pin.uv));
 };

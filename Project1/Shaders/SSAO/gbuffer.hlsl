@@ -22,7 +22,7 @@ struct VertexIn
 struct VertexOut
 {
     float4 posProj : SV_POSITION;
-    float4 color : COLOR;
+    float3 normalV : NORMAL_VIEW;
 };
 
 VertexOut VS(VertexIn vin)
@@ -35,14 +35,16 @@ VertexOut VS(VertexIn vin)
 
     //vout.color = float4(0.6, 0.6, 0.6, 1);
     
-    float4x4 normalMatrix = transpose(inverse(gWorld));
-    vout.color.rgb = mul(mul(vin.normal, (float3x3) normalMatrix), (float3x3) gWorld);
-    vout.color.a = 1;
+    float4x4 normalWorldMatrix = transpose(inverse(gWorld));
+    vout.normalV = mul(vin.normal, (float3x3) normalWorldMatrix);
+    vout.normalV = mul(vin.normal, (float3x3) gWorld);
+    vout.normalV = mul(vout.normalV, (float3x3) gView);
+    vout.normalV = normalize(vout.normalV);
 
     return vout;
 };
 
 float4 PS(VertexOut pin) : SV_TARGET
 {
-    return pin.color;
+    return float4(pin.normalV, 1.0f);
 };

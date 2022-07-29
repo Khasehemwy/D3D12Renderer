@@ -40,7 +40,7 @@ static const float2 gTexCoords[6] =
 struct VertexOut
 {
     float4 posH : SV_POSITION;
-    float4 posVNear : POSITION_VIEW;
+    float3 posVNear : POSITION_VIEW;
     float2 texC : TEXC;
 };
 
@@ -70,22 +70,22 @@ VertexOut VS(uint vid : SV_VertexID)
     vout.posH = float4(2.0f * vout.texC.x - 1.0f, 1.0f - 2.0f * vout.texC.y, 0, 1);
     
     float4 ph = mul(vout.posH, gInvProj);
-    vout.posVNear = ph / ph.w; //将坐标变换到观察空间的近平面
+    vout.posVNear = ph.xyz / ph.w; //将坐标变换到观察空间的近平面
     
     return vout;
 };
 
 float PS(VertexOut pin) : SV_TARGET
 {
-    float3 n = gGbuffer[0].SampleLevel(gSamPointClamp, pin.texC, 0.0f).xyz;
+    float3 n = normalize(gGbuffer[0].SampleLevel(gSamPointClamp, pin.texC, 0.0f).xyz);
     float pz = gGbuffer[1].SampleLevel(gSamDepthMap, pin.texC, 0.0f).r;
     
     //获取该像素对应在观察空间中的点
     pz = NdcDepthToViewDepth(pz);
-    float3 p = ((pz / pin.posVNear.z) * pin.posVNear).xyz;
+    float3 p = (pz / pin.posVNear.z) * pin.posVNear;
     
     //提取随机向量并从[0,1]映射至[-1,1]
-    float3 randVec = 2.0f * gRandomVectorMap.SampleLevel(gSamLinearWrap, 4 * pin.texC, 0.0f).rgb - 1.0f;
+    float3 randVec = 2.0f * gRandomVectorMap.SampleLevel(gSamLinearWrap, 4.0f * pin.texC, 0.0f).rgb - 1.0f;
     
     float occlusionSum = 0.0f;
     
@@ -97,8 +97,8 @@ float PS(VertexOut pin) : SV_TARGET
         
         float3 q = p + flip * gOcclusionRadius * offset;
         
-        //将点q投影到NDC
-        float4 projQ = mul(float4(p, 1.0f), gProjTex);
+        //将点q投影到NDC(对应贴图uv)
+        float4 projQ = mul(float4(q, 1.0f), gProjTex);
         projQ /= projQ.w;
         
         float rz = gGbuffer[1].SampleLevel(gSamDepthMap, projQ.xy, 0.0f).r;
@@ -116,5 +116,6 @@ float PS(VertexOut pin) : SV_TARGET
     occlusionSum /= gNumOffsetVec;
     float access = 1.0f - occlusionSum;
     
-    return saturate(pow(access, 2));
+    return saturate(pow(access, 6.0f));
+    //return randVec;
 };
