@@ -63,6 +63,19 @@ void RenderTexture::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv, CD3D
 	BuildDescriptors();
 }
 
+void RenderTexture::BuildDescriptors(CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuSrv, CD3DX12_GPU_DESCRIPTOR_HANDLE hGpuSrv, CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuDsv, CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuRtv, CD3DX12_CPU_DESCRIPTOR_HANDLE hCpuUav)
+{
+	// Save references to the descriptors. 
+	mhCpuSrv = hCpuSrv;
+	mhGpuSrv = hGpuSrv;
+	mhCpuDsv = hCpuDsv;
+	mhCpuRtv = hCpuRtv;
+	mhCpuUav = hCpuUav;
+
+	//  Create the descriptors
+	BuildDescriptors();
+}
+
 CD3DX12_GPU_DESCRIPTOR_HANDLE RenderTexture::Srv() const
 {
 	return mhGpuSrv;
