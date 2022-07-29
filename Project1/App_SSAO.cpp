@@ -319,13 +319,11 @@ bool SSAO::Initialize()
 {
 	if (!MyApp::Initialize())return false;
 
-	int bufferSizePlus = 100;
-
 	std::unique_ptr<RenderTexture>normalBuffer =
-		std::make_unique<NormalBuffer>(md3dDevice.Get(), mClientWidth + bufferSizePlus, mClientHeight + bufferSizePlus);
+		std::make_unique<NormalBuffer>(md3dDevice.Get(), mClientWidth, mClientHeight);
 
 	std::unique_ptr<RenderTexture>zBuffer =
-		std::make_unique<ZBuffer>(md3dDevice.Get(), mClientWidth + bufferSizePlus, mClientHeight + bufferSizePlus);
+		std::make_unique<ZBuffer>(md3dDevice.Get(), mClientWidth, mClientHeight);
 
 	std::unique_ptr<SsaoMap>ssaoMap =
 		std::make_unique<SsaoMap>(md3dDevice.Get(), mClientWidth, mClientHeight);
