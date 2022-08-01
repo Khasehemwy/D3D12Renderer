@@ -14,8 +14,8 @@ public:
 	virtual void OnMouseMove(WPARAM btnState, int x, int y)override;
 	virtual void OnKeyboardInput(const GameTimer& gt);
 	virtual void Update(const GameTimer& gt)override;
-	virtual std::array<const CD3DX12_STATIC_SAMPLER_DESC, 7> GetStaticSamplers();
 
+	virtual std::array<const CD3DX12_STATIC_SAMPLER_DESC, 7> GetStaticSamplers();
 
 protected:
 	Camera mCamera;
