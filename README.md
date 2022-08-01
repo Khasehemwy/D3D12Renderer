@@ -135,3 +135,21 @@ Simply draw the box. It shows the project structure.
 2. DSV创建时，Flag和Format必须对应，否则会出错。  
   
 <image src="https://user-images.githubusercontent.com/57032017/179924409-85e6d768-7281-40c3-9fc4-c6f206f3d4c3.gif" width="70%">  
+  
+  
+  
+## SSAO  
+  
+[App_SSAO](./Project1/App_SSAO.cpp)  
+  
+经典SSAO实现。  
+  
+**思路：**    
+
+SSAO原理不再赘述，这里主要记录与DX12实现相关的事项。  
+  
+1. 第一个Pass：生成G-Buffer。生成SSAO Map这里使用观察空间的法线信息和NDC坐标下的深度信息（与观察方向相关即可，最终PS输出z值即在NDC坐标，所以直接记录NDC下z值）。最终混合SSAO效果使用SSAO Map和原场景Texture。所以G-Buffer一共有3个，分别为Normal、Z-Value、Color。z值可以绑定DSV直接得到，Normal和Color使用MRT在一个Pass中得到。
+2. 第二个Pass：生成SSAO Map。  
+Ⅰ：创建一个RenderTexture为RandomVectorMap，每个像素代表生成SSAO时，随机采样的向量，数据在CPU端预生成。每帧生成14个Offset数组，作为随机向量的偏移，以保证数据均匀分布（8个立方体角+6个立方体面中心）。  
+Ⅱ：不传入IB、VB，直接使用`mCommandList->DrawInstanced(6, 1, 0, 0);`来绘制屏幕四边形，在Shader中根据SV_VertexID来获取对应顶点。  
+Ⅲ：主要难点为Shader中SSAO遮蔽值的计算，需要理解View、NDC空间之间的关系。坐标经过Perspective Projection以后，即变换到NDC空间，所以经过投影矩阵推导即可以得到，对深度`zView = gProj[3][2] / (zNdc - gProj[2][2])`（Direct3D行主序向量）。然后在平截头体中根据相似三角形，可以得到采样像素点对应在观察空间中的点`p = (zView / pIn.posVNear.z) * pin.posVNear`。现在发现需要posVNear，即采样像素点在平截头体中对应在近平面的点，
