@@ -232,6 +232,7 @@ private:
 	std::unique_ptr<DebugViewer> mDebugViewerZ;
 	std::unique_ptr<DebugViewer> mDebugViewerRandomVec;
 	std::unique_ptr<DebugViewer> mDebugViewerSsaoMap;
+	std::unique_ptr<DebugViewer> mDebugViewerSsaoMapBlur;
 
 	virtual void CreateRtvAndDsvDescriptorHeaps()override;
 
@@ -389,8 +390,12 @@ bool SSAO::Initialize()
 	mDebugViewerRandomVec->SetPosition(DebugViewer::Position::Bottom2);
 
 	mDebugViewerSsaoMap = std::make_unique<DebugViewer>(md3dDevice, mCommandList, mBackBufferFormat, mCbvSrvUavDescriptorSize, gNumFrameResources);
-	mDebugViewerSsaoMap->SetTexSrv(mSsaoMapBlur->Output(), mSsaoMapBlur->SrvFormat());
-	mDebugViewerSsaoMap->SetPosition(DebugViewer::Position::Bottom3);
+	mDebugViewerSsaoMap->SetTexSrv(mSsaoMap->Output(), mSsaoMap->SrvFormat());
+	mDebugViewerSsaoMap->SetPosition(DebugViewer::Position::Bottom2);
+
+	mDebugViewerSsaoMapBlur = std::make_unique<DebugViewer>(md3dDevice, mCommandList, mBackBufferFormat, mCbvSrvUavDescriptorSize, gNumFrameResources);
+	mDebugViewerSsaoMapBlur->SetTexSrv(mSsaoMapBlur->Output(), mSsaoMapBlur->SrvFormat());
+	mDebugViewerSsaoMapBlur->SetPosition(DebugViewer::Position::Bottom3);
 
 
 	mCamera.SetPosition(XMFLOAT3(0, 5, -50));
@@ -597,8 +602,6 @@ void SSAO::Draw(const GameTimer& gt)
 
 	// blur ssao map
 	{
-		mCommandList->SetPipelineState(mPSOs["blur"].Get());
-
 		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSsaoMap->Output(),
 			D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_GENERIC_READ));
 		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mGbuffer[0]->Output(),
@@ -607,6 +610,11 @@ void SSAO::Draw(const GameTimer& gt)
 			D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_GENERIC_READ));
 		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSsaoMapBlur->Output(),
 			D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+
+		mCommandList->SetPipelineState(mPSOs["blur"].Get());
+
+		ID3D12DescriptorHeap* descriptorHeaps[] = { mHeapBlur.Get() };
+		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 		mCommandList->SetComputeRootSignature(mRootSignatureBlur.Get());
 
@@ -662,12 +670,12 @@ void SSAO::Draw(const GameTimer& gt)
 		}
 
 		{
-			mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mRandomVectorMap->Output(),
+			mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSsaoMap->Output(),
 				D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_GENERIC_READ));
 
-			mDebugViewerRandomVec->Draw(CurrentBackBufferView(), mCurrFrameResourceIndex);
+			mDebugViewerSsaoMap->Draw(CurrentBackBufferView(), mCurrFrameResourceIndex);
 
-			mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mRandomVectorMap->Output(),
+			mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSsaoMap->Output(),
 				D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COMMON));
 		}
 
@@ -675,7 +683,7 @@ void SSAO::Draw(const GameTimer& gt)
 			mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSsaoMapBlur->Output(),
 				D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_GENERIC_READ));
 
-			mDebugViewerSsaoMap->Draw(CurrentBackBufferView(), mCurrFrameResourceIndex);
+			mDebugViewerSsaoMapBlur->Draw(CurrentBackBufferView(), mCurrFrameResourceIndex);
 
 			mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mSsaoMapBlur->Output(),
 				D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COMMON));

@@ -10,7 +10,6 @@ void CS(int3 groupThreadID : SV_GroupThreadID,
 {
 	int dispatch_x = dispatchThreadID.x;
 	int dispatch_y = dispatchThreadID.y;
-	//float4 color = gTex[int2(dispatch_x, dispatch_y)];
     float4 color = float4(0, 0, 0, 1);
 
 	int x = groupThreadID.x;
