@@ -81,6 +81,9 @@
     <ClCompile Include="DebugViewer.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Toolkit.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\Common\Camera.h">
@@ -120,6 +123,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="DebugViewer.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Toolkit.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
