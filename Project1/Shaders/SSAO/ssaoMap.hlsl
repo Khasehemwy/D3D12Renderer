@@ -12,8 +12,8 @@ cbuffer cbPerPass : register(b1)
     float gOcclusionFadeEnd;
 };
 
-Texture2D gGbuffer[2] : register(t0);
-Texture2D gRandomVectorMap : register(t2);
+Texture2D gGbuffer[3] : register(t0);
+Texture2D gRandomVectorMap : register(t3);
 //Gbuffer[0]:normal
 //Gbuffer[1]:z
 
@@ -116,6 +116,6 @@ float PS(VertexOut pin) : SV_TARGET
     occlusionSum /= gNumOffsetVec;
     float access = 1.0f - occlusionSum;
     
-    return saturate(pow(access, 6.0f));
+    return saturate(pow(access, 2.0f));
     //return randVec;
 };

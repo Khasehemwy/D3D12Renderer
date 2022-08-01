@@ -25,6 +25,12 @@ struct VertexOut
     float3 normalV : NORMAL_VIEW;
 };
 
+struct PixelOut
+{
+    float4 normal : COLOR0;
+    float3 color : COLOR1;
+};
+
 VertexOut VS(VertexIn vin)
 {
     VertexOut vout;
@@ -44,7 +50,10 @@ VertexOut VS(VertexIn vin)
     return vout;
 };
 
-float4 PS(VertexOut pin) : SV_TARGET
+PixelOut PS(VertexOut pin) : SV_TARGET
 {
-    return float4(pin.normalV, 1.0f);
+    PixelOut pout;
+    pout.normal = float4(pin.normalV, 1.0f);
+    pout.color = float4(1, 1, 1, 1);
+    return pout;
 };
