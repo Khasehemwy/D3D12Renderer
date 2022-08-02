@@ -404,6 +404,10 @@ bool SSAO::Initialize()
 {
 	if (!MyApp::Initialize())return false;
 
+	std::wostringstream title;
+	title << L"SSAO";
+	mMainWndCaption = title.str();
+
 	std::unique_ptr<RenderTexture>normalBuffer =
 		std::make_unique<NormalBuffer>(md3dDevice.Get(), mClientWidth, mClientHeight);
 
@@ -1107,7 +1111,43 @@ void SSAO::BuildRenderItems()
 
 	for (auto& drawArg : mModels["box"]->Geo()->DrawArgs) {
 		auto renderItem = std::make_unique<RenderItem>();
-		XMStoreFloat4x4(&renderItem->World, XMMatrixTranslation(-2, -5, 2) * XMMatrixScaling(10, 10, 10));
+		XMStoreFloat4x4(&renderItem->World, XMMatrixTranslation(-5, -1, 2) * XMMatrixScaling(10, 10, 10));
+		renderItem->ObjCBIndex = objCBIndex++;
+		renderItem->Geo = const_cast<MeshGeometry*>(mModels["box"]->Geo());
+		renderItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		renderItem->IndexCount = drawArg.second.IndexCount;
+		renderItem->StartIndexLocation = drawArg.second.StartIndexLocation;
+		renderItem->BaseVertexLocation = drawArg.second.BaseVertexLocation;
+		mAllRenderitems.push_back(std::move(renderItem));
+	}
+
+	for (auto& drawArg : mModels["box"]->Geo()->DrawArgs) {
+		auto renderItem = std::make_unique<RenderItem>();
+		XMStoreFloat4x4(&renderItem->World, XMMatrixTranslation(-3, -1, 4) * XMMatrixScaling(10, 10, 10));
+		renderItem->ObjCBIndex = objCBIndex++;
+		renderItem->Geo = const_cast<MeshGeometry*>(mModels["box"]->Geo());
+		renderItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		renderItem->IndexCount = drawArg.second.IndexCount;
+		renderItem->StartIndexLocation = drawArg.second.StartIndexLocation;
+		renderItem->BaseVertexLocation = drawArg.second.BaseVertexLocation;
+		mAllRenderitems.push_back(std::move(renderItem));
+	}
+
+	for (auto& drawArg : mModels["box"]->Geo()->DrawArgs) {
+		auto renderItem = std::make_unique<RenderItem>();
+		XMStoreFloat4x4(&renderItem->World, XMMatrixTranslation(-5, -1, 4) * XMMatrixScaling(10, 10, 10));
+		renderItem->ObjCBIndex = objCBIndex++;
+		renderItem->Geo = const_cast<MeshGeometry*>(mModels["box"]->Geo());
+		renderItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+		renderItem->IndexCount = drawArg.second.IndexCount;
+		renderItem->StartIndexLocation = drawArg.second.StartIndexLocation;
+		renderItem->BaseVertexLocation = drawArg.second.BaseVertexLocation;
+		mAllRenderitems.push_back(std::move(renderItem));
+	}
+
+	for (auto& drawArg : mModels["box"]->Geo()->DrawArgs) {
+		auto renderItem = std::make_unique<RenderItem>();
+		XMStoreFloat4x4(&renderItem->World, XMMatrixTranslation(-5, 1, 4) * XMMatrixScaling(10, 10, 10));
 		renderItem->ObjCBIndex = objCBIndex++;
 		renderItem->Geo = const_cast<MeshGeometry*>(mModels["box"]->Geo());
 		renderItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;

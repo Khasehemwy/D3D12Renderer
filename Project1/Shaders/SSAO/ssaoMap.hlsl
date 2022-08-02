@@ -69,8 +69,10 @@ VertexOut VS(uint vid : SV_VertexID)
     
     vout.posH = float4(2.0f * vout.texC.x - 1.0f, 1.0f - 2.0f * vout.texC.y, 0, 1);
     
+    //将NDC坐标变换到观察空间的近平面
+    //因为posH的z值为0, 对应NDC坐标中z为0的平面, 即平截头体的近平面(透视投影不改变近远平面的z值)
     float4 ph = mul(vout.posH, gInvProj);
-    vout.posVNear = ph.xyz / ph.w; //将坐标变换到观察空间的近平面
+    vout.posVNear = ph.xyz;
     
     return vout;
 };
