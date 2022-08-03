@@ -8,7 +8,7 @@ The project implements the various rendering effects.
   
 ## Dependencies  
   
-[D3D12Book - Common](https://github.com/d3dcoder/d3d12book/tree/master/Common)。将`Common`文件夹放置于`../../`目录下（相对于项目中`.cpp`文件的位置）。  
+[D3D12Book - Common](https://github.com/d3dcoder/d3d12book/tree/master/Common)。离线`Common`文件夹已放置于项目中。  
   
 [PIX](https://devblogs.microsoft.com/pix/download/)。若在`Debug`下运行，需安装`PIX`或注释相应代码。（PIX为截帧工具，方便Debug）  
   
@@ -18,7 +18,7 @@ The project implements the various rendering effects.
 ## APP
 ### Draw Box  
 
-[App_DrawBox](./Project1/App_DrawBox.cpp)  
+[App_DrawBox](./App_DrawBox/App_DrawBox.cpp)  
   
 Simply draw the box. It shows the project structure.  
   
@@ -26,7 +26,7 @@ Simply draw the box. It shows the project structure.
   
 ### Shapes In 3 Frame  
   
-[App_shapesIn3Frame](./Project1/App_shapesIn3Frame.cpp)  
+[App_shapesIn3Frame](./App_shapesIn3Frame/App_shapesIn3Frame.cpp)  
   
 因CPU多数时候较GPU更空闲，将部分CPU处理的数据划分到3帧。这样即可在GPU渲染时，提前将数据处理完成，GPU不再需要等待CPU。  
   
@@ -36,7 +36,7 @@ Simply draw the box. It shows the project structure.
   
 ### Tessellation  
   
-[App_Tessellation](./Project1/App_Tessellation.cpp)  
+[App_Tessellation](./App_Tessellation/App_Tessellation.cpp)  
   
 曲面细分实现。  仅为简单入门程度。  
   
@@ -48,7 +48,7 @@ Simply draw the box. It shows the project structure.
   
 ### Instancing  
   
-[App_Instancing](./Project1/App_Instancing.cpp)  
+[App_Instancing](./App_Instancing/App_Instancing.cpp)  
   
 现代实现方式的实例化。  
   
@@ -60,7 +60,7 @@ Simply draw the box. It shows the project structure.
   
 ### Culling  
   
-[App_Culling](./Project1/App_Culling.cpp)  
+[App_Culling](./App_Culling/App_Culling.cpp)  
   
 视锥体剔除。  
   
@@ -78,7 +78,7 @@ Simply draw the box. It shows the project structure.
   
 ### Blur  
   
-[App_Blur](./Project1/App_Blur.cpp)  
+[App_Blur](./App_Blur/App_Blur.cpp)  
   
 用ComputeShader实现的模糊效果。  
   
@@ -97,7 +97,7 @@ Simply draw the box. It shows the project structure.
   
 ### Invert Color  
   
-[App_InvertColor](./Project1/App_InvertColor.cpp)  
+[App_InvertColor](./App_InvertColor/App_InvertColor.cpp)  
   
 **需求：** 两个相互遮盖的物体，后面的物体呈现反色 （类似透视）。  
   
@@ -124,7 +124,7 @@ Simply draw the box. It shows the project structure.
   
 ## Shadow  
   
-[App_Shadow](./Project1/App_Shadow.cpp)  
+[App_Shadow](./App_Shadow/App_Shadow.cpp)  
   
 使用ShadowMap实现的阴影。  
   
@@ -140,7 +140,7 @@ Simply draw the box. It shows the project structure.
   
 ## SSAO  
   
-[App_SSAO](./Project1/App_SSAO.cpp)  
+[App_SSAO](./App_SSAO/App_SSAO.cpp)  
   
 经典SSAO实现。  
   
