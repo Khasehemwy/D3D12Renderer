@@ -1,4 +1,5 @@
 .vs
+Debug
 x64/Debug
-Project1/x64/Debug
-Project1/x64/Release
+*/x64/Debug
+*/x64/Release
