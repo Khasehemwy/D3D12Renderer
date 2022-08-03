@@ -1,0 +1,7 @@
+﻿  App_Culling.cpp
+E:\Projects\D3D12Renderer\App_Culling\App_Culling.cpp(349,11): warning C4244: “初始化”: 从“double”转换到“int”，可能丢失数据
+E:\Projects\D3D12Renderer\App_Culling\App_Culling.cpp(355,76): warning C4244: “参数”: 从“int”转换到“float”，可能丢失数据
+E:\Projects\D3D12Renderer\App_Culling\App_Culling.cpp(355,66): warning C4244: “参数”: 从“int”转换到“float”，可能丢失数据
+E:\Projects\D3D12Renderer\App_Culling\App_Culling.cpp(355,56): warning C4244: “参数”: 从“int”转换到“float”，可能丢失数据
+E:\Projects\D3D12Renderer\App_Culling\App_Culling.cpp(358,40): warning C4244: “+=”: 从“double”转换到“float”，可能丢失数据
+  App_Culling.vcxproj -> E:\Projects\D3D12Renderer\x64\Debug\App_Culling.exe

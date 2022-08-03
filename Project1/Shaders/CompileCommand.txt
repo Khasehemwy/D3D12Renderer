@@ -1,2 +1,0 @@
-fxc "shader.hlsl" /Od /Zi /T vs_5_0 /E "VS" /Fo "shader_vs.cso" /Fc "shader_vs.asm";
-fxc "shader.hlsl" /Od /Zi /T ps_5_0 /E "PS" /Fo "shader_ps.cso" /Fc "shader_ps.asm";

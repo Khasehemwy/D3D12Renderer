@@ -1,0 +1,10 @@
+﻿  App_LoadModel.cpp
+E:\Projects\D3D12Renderer\App_LoadModel\App_LoadModel.cpp(374,43): warning C4267: “初始化”: 从“size_t”转换到“UINT”，可能丢失数据
+E:\Projects\D3D12Renderer\App_LoadModel\App_LoadModel.cpp(379,41): warning C4018: “<”: 有符号/无符号不匹配
+C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.31.31103\include\memory(3416,59): warning C4267: “参数”: 从“size_t”转换到“UINT”，可能丢失数据
+E:\Projects\D3D12Renderer\App_LoadModel\App_LoadModel.cpp(279): message : 查看对正在编译的函数 模板 实例化“std::unique_ptr<FrameResource,std::default_delete<FrameResource>> std::make_unique<FrameResource,T*,int,unsigned __int64,0>(T *&&,int &&,unsigned __int64 &&)”的引用
+          with
+          [
+              T=ID3D12Device
+          ]
+  App_LoadModel.vcxproj -> E:\Projects\D3D12Renderer\x64\Debug\App_LoadModel.exe
