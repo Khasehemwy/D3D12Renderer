@@ -1,8 +1,0 @@
-﻿  App_Instancing.cpp
-E:\Projects\D3D12Renderer\App_Instancing\App_Instancing.cpp(165,2): warning C4267: “参数”: 从“size_t”转换到“UINT”，可能丢失数据
-E:\Projects\D3D12Renderer\App_Instancing\App_Instancing.cpp(315,11): warning C4244: “初始化”: 从“double”转换到“int”，可能丢失数据
-E:\Projects\D3D12Renderer\App_Instancing\App_Instancing.cpp(321,76): warning C4244: “参数”: 从“int”转换到“float”，可能丢失数据
-E:\Projects\D3D12Renderer\App_Instancing\App_Instancing.cpp(321,66): warning C4244: “参数”: 从“int”转换到“float”，可能丢失数据
-E:\Projects\D3D12Renderer\App_Instancing\App_Instancing.cpp(321,56): warning C4244: “参数”: 从“int”转换到“float”，可能丢失数据
-E:\Projects\D3D12Renderer\App_Instancing\App_Instancing.cpp(324,42): warning C4305: “+=”: 从“double”到“float”截断
-  App_Instancing.vcxproj -> E:\Projects\D3D12Renderer\x64\Debug\App_Instancing.exe
