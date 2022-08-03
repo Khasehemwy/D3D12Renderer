@@ -42,6 +42,8 @@ struct RenderItem
 struct ObjectConstants
 {
 	DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4X4 NormalMatrixWorld;
+	DirectX::XMFLOAT4X4 NormalMatrixView;
 };
 
 struct PassConstants
@@ -500,8 +502,11 @@ void SSAO::Update(const GameTimer& gt)
 		CloseHandle(eventHandle);
 	}
 
+	XMMATRIX view = XMLoadFloat4x4(&mView);
+
 	//Update Per Object CB
 	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
+	XMMATRIX normalMatrixView = XMMatrixTranspose(XMMatrixInverse(&XMMatrixDeterminant(view), view));
 	for (auto& e : mAllRenderitems)
 	{
 		// Only update the cbuffer data if the constants have changed.  
@@ -510,8 +515,12 @@ void SSAO::Update(const GameTimer& gt)
 		{
 			XMMATRIX world = XMLoadFloat4x4(&e->World);
 
+			XMMATRIX normalMatrixWorld = XMMatrixTranspose(XMMatrixInverse(&XMMatrixDeterminant(world), world));
+
 			ObjectConstants objConstants;
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
+			XMStoreFloat4x4(&objConstants.NormalMatrixWorld, XMMatrixTranspose(normalMatrixWorld));
+			XMStoreFloat4x4(&objConstants.NormalMatrixView, XMMatrixTranspose(normalMatrixView));
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
@@ -521,7 +530,6 @@ void SSAO::Update(const GameTimer& gt)
 	}
 
 	// Update Gbuffer Pass(MainPass) Constant Buffer
-	XMMATRIX view = XMLoadFloat4x4(&mView);
 	XMMATRIX proj = XMLoadFloat4x4(&mProj);
 
 	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));

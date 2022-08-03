@@ -3,6 +3,8 @@
 cbuffer cbPerObject : register(b0)
 {
     float4x4 gWorld;
+    float4x4 gNormalMatrixWorld;
+    float4x4 gNormalMatrixView;
 };
 
 cbuffer cbPerPass : register(b1)
@@ -41,11 +43,9 @@ VertexOut VS(VertexIn vin)
 
     //vout.color = float4(0.6, 0.6, 0.6, 1);
     
-    float4x4 normalWorldMatrix = transpose(inverse(gWorld));
-    vout.normalV = mul(vin.normal, (float3x3) normalWorldMatrix);
-    vout.normalV = mul(vin.normal, (float3x3) gWorld);
-    vout.normalV = mul(vout.normalV, (float3x3) gView);
-    vout.normalV = normalize(vout.normalV);
+    float3 normal = mul(vin.normal, (float3x3) gNormalMatrixWorld);
+    normal = mul(normal, (float3x3) transpose(inverse(gView)));
+    vout.normalV = normalize(normal);
 
     return vout;
 };
