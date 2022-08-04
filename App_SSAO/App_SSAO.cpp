@@ -43,7 +43,6 @@ struct ObjectConstants
 {
 	DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 NormalMatrixWorld;
-	DirectX::XMFLOAT4X4 NormalMatrixView;
 };
 
 struct PassConstants
@@ -506,7 +505,6 @@ void SSAO::Update(const GameTimer& gt)
 
 	//Update Per Object CB
 	auto currObjectCB = mCurrFrameResource->ObjectCB.get();
-	XMMATRIX normalMatrixView = XMMatrixTranspose(XMMatrixInverse(&XMMatrixDeterminant(view), view));
 	for (auto& e : mAllRenderitems)
 	{
 		// Only update the cbuffer data if the constants have changed.  
@@ -520,7 +518,6 @@ void SSAO::Update(const GameTimer& gt)
 			ObjectConstants objConstants;
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 			XMStoreFloat4x4(&objConstants.NormalMatrixWorld, XMMatrixTranspose(normalMatrixWorld));
-			XMStoreFloat4x4(&objConstants.NormalMatrixView, XMMatrixTranspose(normalMatrixView));
 
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
@@ -1107,7 +1104,9 @@ void SSAO::BuildRenderItems()
 
 	for (auto& drawArg : mModels["box"]->Geo()->DrawArgs) {
 		auto renderItem = std::make_unique<RenderItem>();
-		XMStoreFloat4x4(&renderItem->World, XMMatrixTranslation(0, -15, 0) * XMMatrixScaling(100, 1, 100));
+		XMMATRIX world = XMMatrixScaling(100, 100, 100);
+		world *= XMMatrixTranslation(0, -115, 0);
+		XMStoreFloat4x4(&renderItem->World, world);
 		renderItem->ObjCBIndex = objCBIndex++;
 		renderItem->Geo = const_cast<MeshGeometry*>(mModels["box"]->Geo());
 		renderItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
