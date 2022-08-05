@@ -45,17 +45,26 @@ void Model::ProcessGeo(
 	UINT indexOffset = 0, vertexOffset = 0;
 	for (auto& meshData : mMeshes) {
 
+		float x[2], y[2], z[2];
 		for (size_t i = 0; i < meshData.Vertices.size(); ++i, ++k)
 		{
 			vertices[k] = meshData.Vertices[i];
+			x[0] = min(x[0], vertices[k].Position.x);
+			x[1] = max(x[0], vertices[k].Position.x);
+			y[0] = min(y[0], vertices[k].Position.y);
+			y[1] = max(y[1], vertices[k].Position.y);
+			z[0] = min(z[0], vertices[k].Position.z);
+			z[1] = max(z[1], vertices[k].Position.z);
 		}
-
+		
 		indices.insert(indices.end(), std::begin(meshData.GetIndices16()), std::end(meshData.GetIndices16()));
 
 		SubmeshGeometry submesh;
 		submesh.IndexCount = (UINT)meshData.Indices32.size();
 		submesh.StartIndexLocation = indexOffset;
 		submesh.BaseVertexLocation = vertexOffset;
+		submesh.Bounds.Center = DirectX::XMFLOAT3((x[1] + x[0]) * 0.5f, (y[1] + y[0]) * 0.5f, (z[1] + z[0]) * 0.5f);
+		submesh.Bounds.Extents = DirectX::XMFLOAT3((x[1] - x[0]) * 0.5f, (y[1] - y[0]) * 0.5f, (z[1] - z[0]) * 0.5f);
 		mGeo.DrawArgs[std::to_string(meshId++)] = submesh;
 
 		indexOffset += meshData.Indices32.size();
