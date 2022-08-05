@@ -121,9 +121,7 @@ void InstancingApp::Update(const GameTimer& gt)
 	XMStoreFloat4x4(&objConstants.viewProj, XMMatrixTranspose(viewProj));
 	mObjectCB->CopyData(0, objConstants);
 
-	for (int i = 0; i < mInstanceData.size(); i++) {
-		mInstanceBuffer->CopyData(i, mInstanceData[i]);
-	}
+
 }
 
 void InstancingApp::Draw(const GameTimer& gt)
@@ -326,6 +324,10 @@ void InstancingApp::BuildObject()
 				}
 			}
 		}
+	}
+
+	for (int i = 0; i < mInstanceData.size(); i++) {
+		mInstanceBuffer->CopyData(i, mInstanceData[i]);
 	}
 }
 
