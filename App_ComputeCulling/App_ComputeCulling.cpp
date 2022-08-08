@@ -3,6 +3,7 @@
 #include "Common/GeometryGenerator.h"
 #include "MyApp.h"
 #include "Model.h"
+#include "Toolkit.h"
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
@@ -108,7 +109,8 @@ private:
 
 	struct IndirectCommand
 	{
-		D3D12_GPU_VIRTUAL_ADDRESS cbv;
+		D3D12_GPU_VIRTUAL_ADDRESS cbvPerObj;
+		D3D12_GPU_VIRTUAL_ADDRESS cbvPerPass;
 		D3D12_DRAW_INDEXED_ARGUMENTS drawArguments;
 	};
 	enum class GraphicsRootParameters : int
@@ -204,6 +206,7 @@ bool ComputeCull::Initialize()
 	if (!MyApp::Initialize())return false;
 
 	mCamera.SetPosition(XMFLOAT3(0, 5, -50));
+	mCamera.SetLens(45.0f, (float)mClientWidth / mClientHeight, 1, 3000);
 
 	mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr);
 
@@ -387,10 +390,12 @@ void ComputeCull::BuildRootSignature()
 void ComputeCull::BuildCommandSignature()
 {
 	{
-		D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[2] = {};
+		D3D12_INDIRECT_ARGUMENT_DESC argumentDescs[3] = {};
 		argumentDescs[0].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT_BUFFER_VIEW;
 		argumentDescs[0].ConstantBufferView.RootParameterIndex = (UINT)GraphicsRootParameters::CbvPerObj;
-		argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+		argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT_BUFFER_VIEW;
+		argumentDescs[1].ConstantBufferView.RootParameterIndex = (UINT)GraphicsRootParameters::CbvPerPass;
+		argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
 
 		D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
 		commandSignatureDesc.pArgumentDescs = argumentDescs;
@@ -489,44 +494,6 @@ void ComputeCull::BuildDescriptorHeaps()
 void ComputeCull::BuildBuffers()
 {
 	{
-		UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-		UINT objCount = mOpaqueRenderitems.size();
-
-		for (int frameIndex = 0; frameIndex < gNumFrameResources; frameIndex++) {
-			auto objectCB = mFrameResources[frameIndex]->ObjectCB->Resource();
-
-			for (int objectIndex = 0; objectIndex < objCount; objectIndex++) {
-				D3D12_GPU_VIRTUAL_ADDRESS cbAddress = objectCB->GetGPUVirtualAddress();
-				cbAddress += objectIndex * objCBByteSize;
-
-				int heapIndex = objCount * frameIndex + objectIndex;
-				auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-				handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
-
-				D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-				cbvDesc.BufferLocation = cbAddress;
-				cbvDesc.SizeInBytes = objCBByteSize;
-				md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
-			}
-		}
-
-		UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-
-		for (int frameIndex = 0; frameIndex < gNumFrameResources; frameIndex++) {
-			auto passCB = mFrameResources[frameIndex]->PassCB->Resource();
-
-			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = passCB->GetGPUVirtualAddress();
-
-			int heapIndex = mPassCbvOffset + frameIndex;
-			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-			handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
-
-			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-			cbvDesc.BufferLocation = cbAddress;
-			cbvDesc.SizeInBytes = passCBByteSize;
-			md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
-		}
-
 		//Store Per Object CB
 		for (int i = 0; i < mFrameResources.size(); i++) {
 			auto currObjectCB = mFrameResources[i]->ObjectCB.get();
@@ -631,16 +598,23 @@ void ComputeCull::BuildCommands()
 	std::vector<IndirectCommand> commands;
 	commands.resize(gNumObjects);
 	
-	D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = mCommandsBuffer->Resource()->GetGPUVirtualAddress();
 	UINT commandIndex = 0;
+	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 
 	for (UINT frame = 0; frame < gNumFrameResources; frame++)
 	{
 		for (UINT i = 0; i < min(gNumObjects, mOpaqueRenderitems.size()); i++)
 		{
+			D3D12_GPU_VIRTUAL_ADDRESS cbvPerObjGpuAddress =
+				mCurrFrameResource->ObjectCB->Resource()->GetGPUVirtualAddress() + i * objCBByteSize;
+			D3D12_GPU_VIRTUAL_ADDRESS cbvPerPassGpuAddress =
+				mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + frame * passCBByteSize;
+
 			auto ri = mOpaqueRenderitems[i];
 
-			commands[commandIndex].cbv = gpuAddress;
+			commands[commandIndex].cbvPerObj = cbvPerObjGpuAddress;
+			commands[commandIndex].cbvPerPass = cbvPerPassGpuAddress;
 			commands[commandIndex].drawArguments.BaseVertexLocation = ri->BaseVertexLocation;
 			commands[commandIndex].drawArguments.IndexCountPerInstance = ri->IndexCount;
 			commands[commandIndex].drawArguments.InstanceCount = 1;
@@ -648,7 +622,6 @@ void ComputeCull::BuildCommands()
 			commands[commandIndex].drawArguments.StartInstanceLocation = 0;
 
 			commandIndex++;
-			gpuAddress += sizeof(ObjectConstants);
 		}
 	}
 
@@ -745,7 +718,7 @@ void ComputeCull::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std:
 		cmdList->SetGraphicsRootConstantBufferView(
 			(UINT)GraphicsRootParameters::CbvPerObj,
 			mCurrFrameResource->ObjectCB->Resource()->GetGPUVirtualAddress() + 
-			(mCurrFrameResourceIndex * (UINT)mOpaqueRenderitems.size() + ri->ObjCBIndex));
+			(ri->ObjCBIndex * objCBByteSize));
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
