@@ -58,7 +58,7 @@ void CS(uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
         }
         if (!cull)
         {
-            gOutputCommands.Append(gInputCommands[index]);
         }
+            gOutputCommands.Append(gInputCommands[index]);
     }
 }

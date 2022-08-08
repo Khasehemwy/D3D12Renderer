@@ -8,8 +8,8 @@ using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
 
-const int gNumFrameResources = 1;
-const int gNumObjects = 8 * 20 * 20;
+const int gNumFrame = 1;
+int gNumObjects = 8 * 3 * 3 * 3;
 
 struct Vertex
 {
@@ -23,7 +23,7 @@ struct RenderItem
 
 	XMFLOAT4X4 World = MathHelper::Identity4x4();
 
-	int NumFramesDirty = gNumFrameResources;
+	int NumFramesDirty = gNumFrame;
 
 	UINT ObjCBIndex = -1;
 
@@ -97,10 +97,14 @@ public:
 	virtual void Draw(const GameTimer& gt)override;
 private:
 
+	const UINT mComputeThreadBlockSize = 128;
+
 	enum class RootParametersCull : int
 	{
-		SrvUavTable,
-		RootConstants,            
+		PassCbv,
+		ObjectInfoSrv,
+		CommandsSrv,
+		OutputCommandsUav,
 		Size
 	};
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr;
@@ -122,7 +126,6 @@ private:
 	ComPtr<ID3D12CommandSignature> mCommandSignature = nullptr;
 	void BuildCommandSignature();
 
-	UINT mPassCbvOffset = 0;
 	enum class HeapCullOffsets : int
 	{
 		PassCbOffset = 0,
@@ -131,7 +134,7 @@ private:
 		ProcessedCommandsOffset = CommandsOffset + 1,
 		Size = ProcessedCommandsOffset + 1
 	};
-	ComPtr<ID3D12DescriptorHeap> mCbvHeap = nullptr;
+	ComPtr<ID3D12DescriptorHeap> mHeapDraw = nullptr;
 	ComPtr<ID3D12DescriptorHeap> mHeapCull = nullptr;
 	PassConstants mMainPassCB;
 	void BuildDescriptorHeaps();
@@ -152,9 +155,10 @@ private:
 	FrameResource* mCurrFrameResource = nullptr;
 	void BuildFrameResources();
 
+	const UINT mCommandBufferCounterOffset = AlignForUavCounter(gNumObjects * sizeof(IndirectCommand) * gNumFrame);
 	std::unique_ptr<UploadBuffer<CullObjectInfo>> mCullObjectBuffer = nullptr;
 	std::unique_ptr<UploadBuffer<IndirectCommand>> mCommandsBuffer = nullptr;
-	ComPtr<ID3D12Resource> mProcessedCommandBuffers[gNumFrameResources];
+	ComPtr<ID3D12Resource> mProcessedCommandBuffers[gNumFrame];
 	ComPtr<ID3D12Resource> mProcessedCommandBufferCounterReset;
 	void BuildBuffers();
 
@@ -235,7 +239,7 @@ void ComputeCull::Update(const GameTimer& gt)
 {
 	MyApp::Update(gt);
 
-	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
+	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrame;
 	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
 
 	if (mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence)
@@ -273,41 +277,87 @@ void ComputeCull::Draw(const GameTimer& gt)
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 	cmdListAlloc->Reset();
 
-	if (mIsWireframe) {
-		mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque_wireframe"].Get());
+	// execute culling cs
+	{
+		mCommandList->Reset(cmdListAlloc.Get(), mPSOs["cull"].Get());
+
+		mCommandList->SetComputeRootSignature(mRootSignatureCull.Get());
+
+		ID3D12DescriptorHeap* ppHeaps[] = { mHeapCull.Get() };
+		mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+		int passCbvIndex = (UINT)HeapCullOffsets::PassCbOffset + (mCurrFrameResourceIndex * (UINT)HeapCullOffsets::Size);
+		auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mHeapCull->GetGPUDescriptorHandleForHeapStart());
+		passCbvHandle.Offset(passCbvIndex, mCbvSrvUavDescriptorSize);
+		mCommandList->SetComputeRootDescriptorTable((UINT)RootParametersCull::PassCbv, passCbvHandle);
+
+		auto objInfoBuffer = mCullObjectBuffer->Resource();
+		mCommandList->SetComputeRootShaderResourceView((UINT)RootParametersCull::ObjectInfoSrv, objInfoBuffer->GetGPUVirtualAddress());
+
+		auto commandsBuffer = mCommandsBuffer->Resource();
+		mCommandList->SetComputeRootShaderResourceView((UINT)RootParametersCull::CommandsSrv, commandsBuffer->GetGPUVirtualAddress());
+
+		int outCommandsUavIndex = (UINT)HeapCullOffsets::ProcessedCommandsOffset + (mCurrFrameResourceIndex * (UINT)HeapCullOffsets::Size);
+		auto outCommandsUavHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mHeapCull->GetGPUDescriptorHandleForHeapStart());
+		outCommandsUavHandle.Offset(outCommandsUavIndex, mCbvSrvUavDescriptorSize);
+		mCommandList->SetComputeRootDescriptorTable((UINT)RootParametersCull::OutputCommandsUav, outCommandsUavHandle);
+
+		mCommandList->CopyBufferRegion(
+			mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
+			mCommandBufferCounterOffset, mProcessedCommandBufferCounterReset.Get(), 0, sizeof(UINT));
+
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
+			D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+
+		mCommandList->Dispatch(static_cast<UINT>(ceil((float)gNumObjects / float(mComputeThreadBlockSize))), 1, 1);
 	}
-	else {
-		mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get());
+
+	// draw command
+	{
+		mCommandList->SetPipelineState(mPSOs["opaque"].Get());
+
+		mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+
+		ID3D12DescriptorHeap* ppHeaps[] = { mHeapDraw.Get() };
+		mCommandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+		mCommandList->RSSetViewports(1, &mScreenViewport);
+		mCommandList->RSSetScissorRects(1, &mScissorRect);
+
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
+			D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT));
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+			D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+		mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
+		mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+		mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
+
+
+		// For each render item...
+		for (size_t i = 0; i < mOpaqueRenderitems.size(); ++i)
+		{
+			auto ri = mOpaqueRenderitems[i];
+
+			mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+			mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+			mCommandList->IASetPrimitiveTopology(ri->PrimitiveType);
+
+			mCommandList->ExecuteIndirect(
+				mCommandSignature.Get(),
+				gNumObjects,
+				mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
+				0,
+				mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
+				mCommandBufferCounterOffset);
+		}
+
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
+			D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
+			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 	}
-
-	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScissorRect);
-
-	mCommandList->ResourceBarrier(
-		1, &CD3DX12_RESOURCE_BARRIER::Transition(
-			CurrentBackBuffer(),
-			D3D12_RESOURCE_STATE_PRESENT,
-			D3D12_RESOURCE_STATE_RENDER_TARGET)
-	);
-
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
-	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-
-	mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
-
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
-	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-
-	mCommandList->SetGraphicsRootConstantBufferView(
-		(UINT)GraphicsRootParameters::CbvPerPass, 
-		mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress());
-
-	DrawRenderItems(mCommandList.Get(), mOpaqueRenderitems);
-
-	mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
 	mCommandList->Close();
 
@@ -324,7 +374,7 @@ void ComputeCull::Draw(const GameTimer& gt)
 
 void ComputeCull::BuildFrameResources()
 {
-	for (int i = 0; i < gNumFrameResources; i++) {
+	for (int i = 0; i < gNumFrame; i++) {
 		mFrameResources.push_back(
 			std::make_unique<FrameResource>(
 				md3dDevice.Get(),
@@ -342,7 +392,7 @@ void ComputeCull::BuildRootSignature()
 		slotRootParameter[(UINT)GraphicsRootParameters::CbvPerPass].InitAsConstantBufferView(1);
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
-			2, slotRootParameter, 0, nullptr,
+			(UINT)GraphicsRootParameters::Size, slotRootParameter, 0, nullptr,
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
 		);
 
@@ -360,13 +410,18 @@ void ComputeCull::BuildRootSignature()
 	}
 
 	{
-		CD3DX12_DESCRIPTOR_RANGE ranges[2];
-		ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 2, 0);
-		ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+		CD3DX12_DESCRIPTOR_RANGE uavTable;
+		uavTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, 0);
+
+		CD3DX12_DESCRIPTOR_RANGE passCbvTable;
+		passCbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+
 
 		CD3DX12_ROOT_PARAMETER computeRootParameters[(UINT)RootParametersCull::Size];
-		computeRootParameters[(UINT)RootParametersCull::SrvUavTable].InitAsDescriptorTable(2, ranges);
-		computeRootParameters[(UINT)RootParametersCull::RootConstants].InitAsConstants(3, 0);
+		computeRootParameters[(UINT)RootParametersCull::PassCbv].InitAsDescriptorTable(1, &passCbvTable);
+		computeRootParameters[(UINT)RootParametersCull::ObjectInfoSrv].InitAsShaderResourceView(0);
+		computeRootParameters[(UINT)RootParametersCull::CommandsSrv].InitAsShaderResourceView(1);
+		computeRootParameters[(UINT)RootParametersCull::OutputCommandsUav].InitAsDescriptorTable(1, &uavTable);
 
 		CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(
 			(UINT)RootParametersCull::Size, computeRootParameters, 0, nullptr,
@@ -395,7 +450,7 @@ void ComputeCull::BuildCommandSignature()
 		argumentDescs[0].ConstantBufferView.RootParameterIndex = (UINT)GraphicsRootParameters::CbvPerObj;
 		argumentDescs[1].Type = D3D12_INDIRECT_ARGUMENT_TYPE_CONSTANT_BUFFER_VIEW;
 		argumentDescs[1].ConstantBufferView.RootParameterIndex = (UINT)GraphicsRootParameters::CbvPerPass;
-		argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+		argumentDescs[2].Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED;
 
 		D3D12_COMMAND_SIGNATURE_DESC commandSignatureDesc = {};
 		commandSignatureDesc.pArgumentDescs = argumentDescs;
@@ -461,29 +516,28 @@ void ComputeCull::BuildRenderItems()
 
 	// All the render items are opaque.
 	for (auto& e : mAllRenderitems) mOpaqueRenderitems.push_back(e.get());
+	gNumObjects = mOpaqueRenderitems.size();
 }
 
 void ComputeCull::BuildDescriptorHeaps()
 {
 	{
 		UINT objCount = (UINT)mOpaqueRenderitems.size();
-		UINT frameCount = gNumFrameResources;
+		UINT frameCount = gNumFrame;
 
-		UINT numDescriptors = objCount * gNumFrameResources + frameCount;
-
-		mPassCbvOffset = objCount * gNumFrameResources;
+		UINT numDescriptors = objCount * gNumFrame + frameCount;
 
 		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
 		cbvHeapDesc.NumDescriptors = numDescriptors;
 		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		cbvHeapDesc.NodeMask = 0;
-		md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap));
+		md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mHeapDraw));
 	}
 
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-		cbvHeapDesc.NumDescriptors = (UINT)HeapCullOffsets::Size;
+		cbvHeapDesc.NumDescriptors = (UINT)HeapCullOffsets::Size * gNumFrame;
 		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		cbvHeapDesc.NodeMask = 0;
@@ -520,12 +574,12 @@ void ComputeCull::BuildBuffers()
 	{
 		UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(CullPassInfo));
 
-		for (int frameIndex = 0; frameIndex < gNumFrameResources; frameIndex++) {
+		for (int frameIndex = 0; frameIndex < gNumFrame; frameIndex++) {
 			auto passCB = mFrameResources[frameIndex]->CullPassCB->Resource();
 
 			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = passCB->GetGPUVirtualAddress();
 
-			int heapIndex = (UINT)HeapCullOffsets::PassCbOffset * (frameIndex + 1);
+			int heapIndex = (UINT)HeapCullOffsets::PassCbOffset + (frameIndex * (UINT)HeapCullOffsets::Size);
 			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mHeapCull->GetCPUDescriptorHandleForHeapStart());
 			handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
 
@@ -535,19 +589,25 @@ void ComputeCull::BuildBuffers()
 			md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
 		}
 
-		mCullObjectBuffer = std::make_unique<UploadBuffer<CullObjectInfo>>(md3dDevice.Get(), gNumObjects, false);
-		mCommandsBuffer = std::make_unique<UploadBuffer<IndirectCommand>>(md3dDevice.Get(), gNumObjects, false);
+		mCullObjectBuffer = std::make_unique<UploadBuffer<CullObjectInfo>>(md3dDevice.Get(), gNumObjects * gNumFrame, false);
+		mCommandsBuffer = std::make_unique<UploadBuffer<IndirectCommand>>(md3dDevice.Get(), gNumObjects * gNumFrame, false);
 
 		BuildObjectsCullInfo();
+		BuildCommands();
 
 		// gen commands buffer
-		CD3DX12_CPU_DESCRIPTOR_HANDLE processedCommandsHandle(mHeapCull->GetCPUDescriptorHandleForHeapStart(), (UINT)HeapCullOffsets::ProcessedCommandsOffset, mCbvSrvUavDescriptorSize);
-		const UINT commandBufferCounterOffset = AlignForUavCounter(gNumObjects * sizeof(IndirectCommand));
-		for (UINT frame = 0; frame < gNumFrameResources; frame++)
+		
+		for (UINT frame = 0; frame < gNumFrame; frame++)
 		{
+			int heapIndex = (UINT)HeapCullOffsets::ProcessedCommandsOffset + (frame * (UINT)HeapCullOffsets::Size);
+			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mHeapCull->GetCPUDescriptorHandleForHeapStart());
+			handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
+
 			// Allocate a buffer large enough to hold all of the indirect commands
 			// for a single frame as well as a UAV counter.
-			CD3DX12_RESOURCE_DESC commandBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(commandBufferCounterOffset + sizeof(UINT), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+			CD3DX12_RESOURCE_DESC commandBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(
+				mCommandBufferCounterOffset + sizeof(UINT), D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+
 			ThrowIfFailed(md3dDevice->CreateCommittedResource(
 				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 				D3D12_HEAP_FLAG_NONE,
@@ -562,16 +622,14 @@ void ComputeCull::BuildBuffers()
 			uavDesc.Buffer.FirstElement = 0;
 			uavDesc.Buffer.NumElements = gNumObjects;
 			uavDesc.Buffer.StructureByteStride = sizeof(IndirectCommand);
-			uavDesc.Buffer.CounterOffsetInBytes = commandBufferCounterOffset;
+			uavDesc.Buffer.CounterOffsetInBytes = mCommandBufferCounterOffset;
 			uavDesc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
 
 			md3dDevice->CreateUnorderedAccessView(
 				mProcessedCommandBuffers[frame].Get(),
 				mProcessedCommandBuffers[frame].Get(),
 				&uavDesc,
-				processedCommandsHandle);
-
-			processedCommandsHandle.Offset((UINT)HeapCullOffsets::Size, mCbvSrvUavDescriptorSize);
+				handle);
 		}
 
 		// Allocate a buffer that can be used to reset the UAV counters and initialize it to 0.
@@ -588,28 +646,26 @@ void ComputeCull::BuildBuffers()
 		ThrowIfFailed(mProcessedCommandBufferCounterReset->Map(0, &readRange, reinterpret_cast<void**>(&pMappedCounterReset)));
 		ZeroMemory(pMappedCounterReset, sizeof(UINT));
 		mProcessedCommandBufferCounterReset->Unmap(0, nullptr);
-
-		BuildCommands();
 	}
 }
 
 void ComputeCull::BuildCommands()
 {
 	std::vector<IndirectCommand> commands;
-	commands.resize(gNumObjects);
+	commands.resize(gNumObjects * gNumFrame);
 	
 	UINT commandIndex = 0;
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 
-	for (UINT frame = 0; frame < gNumFrameResources; frame++)
+	for (UINT frame = 0; frame < gNumFrame; frame++)
 	{
 		for (UINT i = 0; i < min(gNumObjects, mOpaqueRenderitems.size()); i++)
 		{
 			D3D12_GPU_VIRTUAL_ADDRESS cbvPerObjGpuAddress =
-				mCurrFrameResource->ObjectCB->Resource()->GetGPUVirtualAddress() + i * objCBByteSize;
+				mFrameResources[frame]->ObjectCB->Resource()->GetGPUVirtualAddress() + i * objCBByteSize;
 			D3D12_GPU_VIRTUAL_ADDRESS cbvPerPassGpuAddress =
-				mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() + frame * passCBByteSize;
+				mFrameResources[frame]->PassCB->Resource()->GetGPUVirtualAddress() + frame * passCBByteSize;
 
 			auto ri = mOpaqueRenderitems[i];
 
@@ -627,7 +683,7 @@ void ComputeCull::BuildCommands()
 
 	// Copy data to the intermediate upload heap and then schedule a copy
 	// from the upload heap to the command buffer.
-	const UINT commandBufferSize = gNumObjects * sizeof(IndirectCommand) * gNumFrameResources;
+	const UINT commandBufferSize = gNumObjects * sizeof(IndirectCommand) * gNumFrame + (sizeof(UINT) * gNumFrame);
 
 	D3D12_SUBRESOURCE_DATA commandData = {};
 	commandData.pData = reinterpret_cast<UINT8*>(&commands[0]);
@@ -637,7 +693,6 @@ void ComputeCull::BuildCommands()
 	for (int i = 0; i < commands.size(); i++) {
 		mCommandsBuffer->CopyData(i, commands[i]);
 	}
-	//mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mCommandsBuffer->Resource(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE));
 }
 
 void ComputeCull::BuildObjectsCullInfo()
@@ -688,15 +743,14 @@ void ComputeCull::BuildPSOs()
 	md3dDevice->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"]));
 
 	{
-		D3D12_COMPUTE_PIPELINE_STATE_DESC blurPsoDesc;
-		ZeroMemory(&blurPsoDesc, sizeof(D3D12_COMPUTE_PIPELINE_STATE_DESC));
-		blurPsoDesc.pRootSignature = mRootSignatureCull.Get();
-		blurPsoDesc.CS = {
+		D3D12_COMPUTE_PIPELINE_STATE_DESC cullPsoDesc = {};
+		cullPsoDesc.pRootSignature = mRootSignatureCull.Get();
+		cullPsoDesc.CS = {
 			reinterpret_cast<BYTE*>(mShaders["cullCS"]->GetBufferPointer()),
 			mShaders["cullCS"]->GetBufferSize()
 		};
-		blurPsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
-		md3dDevice->CreateComputePipelineState(&blurPsoDesc, IID_PPV_ARGS(&mPSOs["cull"]));
+		cullPsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
+		ThrowIfFailed(md3dDevice->CreateComputePipelineState(&cullPsoDesc, IID_PPV_ARGS(&mPSOs["cull"])));
 	}
 }
 
