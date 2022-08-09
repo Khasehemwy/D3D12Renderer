@@ -3,14 +3,20 @@
 struct ObjectInfo
 {
     float4x4 world;
-    float3 boxCenter;
-    float3 boxLen;
+    float4 boxCenter;
+    float4 boxLen;
 };
 
 struct IndirectCommand
 {
-    uint2 cbvAddress;
-    uint4 drawArguments;
+    uint2 objCbvAddress;
+    uint2 passCbvAddress;
+    uint indexCountPerInstance;
+    uint instanceCount;
+    uint startIndexLocation;
+    int baseVertexLocation;
+    uint startInstanceLocation;
+    uint pad[3];
 };
 
 cbuffer RootConstants : register(b0)
@@ -20,7 +26,7 @@ cbuffer RootConstants : register(b0)
     float gCommandCount; // The number of commands to be processed.
 };
 
-StructuredBuffer<ObjectInfo> gObjects : register(t0); // SRV: Wrapped constant buffers
+StructuredBuffer<ObjectInfo> gObjects : register(t0); // SRV: Objects info for culling
 StructuredBuffer<IndirectCommand> gInputCommands : register(t1); // SRV: Indirect commands
 AppendStructuredBuffer<IndirectCommand> gOutputCommands : register(u0); // UAV: Processed indirect commands
 
@@ -28,12 +34,12 @@ AppendStructuredBuffer<IndirectCommand> gOutputCommands : register(u0); // UAV: 
 void CS(uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
 {
     // Each thread of the CS operates on one of the indirect commands.
-    uint index = (groupId.x * threadBlockSize) + groupIndex;
+    uint index = (groupId.x * threadBlockSize) + groupIndex;    
     
     if (index < gCommandCount)
     {
-        float3 l = gObjects[index].boxLen;
-        float3 p = gObjects[index].boxCenter;
+        float3 l = gObjects[index].boxLen.xyz;
+        float3 p = gObjects[index].boxCenter.xyz;
         float3 pos[6] =
         {
             float3(p.x + l.x, p.y, p.z),
@@ -58,7 +64,7 @@ void CS(uint3 groupId : SV_GroupID, uint groupIndex : SV_GroupIndex)
         }
         if (!cull)
         {
-        }
             gOutputCommands.Append(gInputCommands[index]);
+        }
     }
 }
