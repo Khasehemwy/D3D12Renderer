@@ -17,14 +17,19 @@ The project implements the various rendering effects.
 [assimp](https://github.com/assimp/assimp)。模型加载库。
   
   
-## APP
+## APP  
+  
+**详细介绍在各App文件夹内的README文档。**  
+
+  ***
+  
 ### Draw Box  
 
 [App_DrawBox](./App_DrawBox)  
   
 Simply draw the box. It shows the project structure.  
   
-  
+  ***
   
 ### Shapes In 3 Frame  
   
@@ -32,7 +37,7 @@ Simply draw the box. It shows the project structure.
   
 将数据提前处理3帧。
   
-  
+  ***
   
 ### Tessellation  
   
@@ -40,7 +45,9 @@ Simply draw the box. It shows the project structure.
   
 曲面细分实现。  仅为简单入门程度。  
   
+<image src="https://user-images.githubusercontent.com/57032017/179745877-04095b94-6209-4651-a1a9-c214e8049f87.gif" width="50%">  
   
+  ***
   
 ### Instancing  
   
@@ -48,7 +55,9 @@ Simply draw the box. It shows the project structure.
   
 现代实现方式的实例化。  
   
+<image src="https://user-images.githubusercontent.com/57032017/179747814-5b177533-28eb-4b41-9288-6199c5a8e196.gif" width="50%">  
   
+  ***
   
 ### Culling  
   
@@ -56,7 +65,9 @@ Simply draw the box. It shows the project structure.
   
 视锥体剔除。  
   
+<image src="https://user-images.githubusercontent.com/57032017/179749927-7ccf4aa0-89e0-464c-8468-b14510705956.gif" width="50%">  
   
+  ***
   
 ### Blur  
   
@@ -64,7 +75,9 @@ Simply draw the box. It shows the project structure.
   
 用ComputeShader实现的模糊效果。  
   
+<image src="https://user-images.githubusercontent.com/57032017/179885809-55a19e3d-be6d-4b1b-89ba-d7a4a51b447f.png" width="50%">   
   
+  ***
   
 ### Invert Color  
   
@@ -72,18 +85,27 @@ Simply draw the box. It shows the project structure.
   
 两个相互遮盖的物体，后面的物体呈现反色 （类似透视）。  
   
+<image src="https://user-images.githubusercontent.com/57032017/180359857-910b86aa-e5d4-4b00-bd2a-880a735ff574.gif" width="50%">   
   
+  ***
   
-## Shadow  
+### Shadow  
   
 [App_Shadow](./App_Shadow)  
   
 使用ShadowMap实现的阴影。  
   
+<image src="https://user-images.githubusercontent.com/57032017/179924409-85e6d768-7281-40c3-9fc4-c6f206f3d4c3.gif" width="50%">  
   
+  ***
   
-## SSAO  
+### SSAO  
   
 [App_SSAO](./App_SSAO)  
   
 经典SSAO实现。  
+  
+<image src="https://user-images.githubusercontent.com/57032017/182311718-3f6a3d65-7b1b-41b5-bfd4-f1c1e4cb669c.png" width=50%>  
+  
+  ***
+  
