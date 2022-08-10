@@ -1,6 +1,6 @@
 # Shadow  
 
-[App_Shadow](./App_Shadow/App_Shadow.cpp)  
+[App_Shadow](./App_Shadow.cpp)  
 
 使用ShadowMap实现的阴影。  
 

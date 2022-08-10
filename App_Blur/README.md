@@ -1,6 +1,6 @@
 # Blur
 
-[App_Blur](./App_Blur/App_Blur.cpp)  
+[App_Blur](./App_Blur.cpp)  
 
 用ComputeShader实现的模糊效果。  
 

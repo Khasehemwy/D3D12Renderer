@@ -1,6 +1,6 @@
 # Tessellation  
 
-[App_Tessellation](./App_Tessellation/App_Tessellation.cpp)  
+[App_Tessellation](./App_Tessellation.cpp)  
 
 曲面细分实现。  仅为简单入门程度。  
 

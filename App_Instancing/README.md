@@ -1,6 +1,6 @@
 # Instancing  
 
-[App_Instancing](./App_Instancing/App_Instancing.cpp)  
+[App_Instancing](./App_Instancing.cpp)  
 
 现代实现方式的实例化。  
 

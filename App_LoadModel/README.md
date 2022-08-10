@@ -1,6 +1,6 @@
 # Load Model
 
-[App_LoadModel](./App_LoadModel/App_LoadModel.cpp)  
+[App_LoadModel](./App_LoadModel.cpp)  
 
 Simply load the model using `assimp` lib.  
 

@@ -1,6 +1,6 @@
 # Culling  
 
-[App_Culling](./App_Culling/App_Culling.cpp)  
+[App_Culling](./App_Culling.cpp)  
 
 视锥体剔除。  
 

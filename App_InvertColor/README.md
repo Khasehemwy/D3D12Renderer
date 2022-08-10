@@ -1,6 +1,6 @@
 # Invert Color  
 
-[App_InvertColor](./App_InvertColor/App_InvertColor.cpp)  
+[App_InvertColor](./App_InvertColor.cpp)  
 
 **需求：** 两个相互遮盖的物体，后面的物体呈现反色 （类似透视）。  
 

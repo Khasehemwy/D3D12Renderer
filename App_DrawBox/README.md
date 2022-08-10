@@ -1,6 +1,6 @@
 # Draw Box  
 
-[App_DrawBox](./App_DrawBox/App_DrawBox.cpp)  
+[App_DrawBox](./App_DrawBox.cpp)  
 
 Simply draw the box. It shows the project structure.  
 
