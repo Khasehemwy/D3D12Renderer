@@ -9,7 +9,7 @@ using namespace DirectX;
 using namespace DirectX::PackedVector;
 
 const int gNumFrame = 1;
-const int gNumObjects = 8 * 4 * 4 * 4;
+const int gNumObjects = 8 * 10 * 10 * 10;
 
 struct Vertex
 {
@@ -63,6 +63,14 @@ struct CullObjectInfo
 	XMFLOAT4 boxLen;
 };
 
+struct IndirectCommand
+{
+	D3D12_GPU_VIRTUAL_ADDRESS cbvPerObj;
+	D3D12_GPU_VIRTUAL_ADDRESS cbvPerPass;
+	D3D12_DRAW_INDEXED_ARGUMENTS drawArguments;
+	UINT pad[3];
+};
+
 struct FrameResource
 {
 public:
@@ -76,6 +84,8 @@ public:
 		PassCB = std::make_unique<UploadBuffer<PassConstants>>(device, passCount, true);
 		CullPassCB = std::make_unique<UploadBuffer<CullPassInfo>>(device, passCount, true);
 		ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
+		CullObjectBuffer = std::make_unique<UploadBuffer<CullObjectInfo>>(device, objectCount, false);
+		CommandsBuffer = std::make_unique<UploadBuffer<IndirectCommand>>(device, objectCount, false);
 	};
 
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CmdListAlloc;
@@ -83,6 +93,8 @@ public:
 	std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
 	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
 	std::unique_ptr<UploadBuffer<CullPassInfo>> CullPassCB = nullptr;
+	std::unique_ptr<UploadBuffer<CullObjectInfo>> CullObjectBuffer = nullptr;
+	std::unique_ptr<UploadBuffer<IndirectCommand>> CommandsBuffer = nullptr;
 
 	UINT64 Fence = 0;
 };
@@ -95,10 +107,15 @@ public:
 	virtual bool Initialize()override;
 	virtual void Update(const GameTimer& gt)override;
 	virtual void Draw(const GameTimer& gt)override;
+	virtual void OnKeyboardInput(const GameTimer& gt)override;
+	virtual void OnResize()override;
 private:
 
+	int mRenderState = 0;
+
+	BoundingFrustum mCamFrustum;
+
 	const UINT mComputeThreadBlockSize = 128;
-	XMFLOAT4X4 mProjCull;
 
 	enum class RootParametersCull : int
 	{
@@ -112,13 +129,7 @@ private:
 	ComPtr<ID3D12RootSignature> mRootSignatureCull = nullptr;
 	void BuildRootSignature();
 
-	struct IndirectCommand
-	{
-		D3D12_GPU_VIRTUAL_ADDRESS cbvPerObj;
-		D3D12_GPU_VIRTUAL_ADDRESS cbvPerPass;
-		D3D12_DRAW_INDEXED_ARGUMENTS drawArguments;
-		UINT pad[3];
-	};
+
 	enum class GraphicsRootParameters : int
 	{
 		CbvPerObj = 0,
@@ -150,6 +161,7 @@ private:
 
 	std::vector<std::unique_ptr<RenderItem>> mAllRenderitems;
 	std::vector<RenderItem*> mOpaqueRenderitems;
+	std::vector<RenderItem*> mCpuCullingRenderitems;
 	void BuildRenderItems();
 
 	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
@@ -158,8 +170,6 @@ private:
 	void BuildFrameResources();
 
 	UINT mCommandBufferCounterOffset = AlignForUavCounter(gNumObjects * sizeof(IndirectCommand) * gNumFrame);
-	std::unique_ptr<UploadBuffer<CullObjectInfo>> mCullObjectBuffer = nullptr;
-	std::unique_ptr<UploadBuffer<IndirectCommand>> mCommandsBuffer = nullptr;
 	ComPtr<ID3D12Resource> mProcessedCommandBuffers[gNumFrame];
 	ComPtr<ID3D12Resource> mProcessedCommandBufferCounterReset;
 	void BuildBuffers();
@@ -212,9 +222,9 @@ bool ComputeCull::Initialize()
 	if (!MyApp::Initialize())return false;
 
 	mCamera.SetPosition(XMFLOAT3(0, 5, -50));
-	mCamera.SetLens(20.0f, (float)mClientWidth / mClientHeight, 1, 3000);
-	mProjCull = mCamera.GetProj4x4f();
-	mCamera.SetLens(90.0f, (float)mClientWidth / mClientHeight, 1, 3000);
+	mCamera.SetLens(45.0f, (float)mClientWidth / mClientHeight, 1, 3000);
+
+	BoundingFrustum::CreateFromMatrix(mCamFrustum, mCamera.GetProj());
 
 	mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr);
 
@@ -270,10 +280,42 @@ void ComputeCull::Update(const GameTimer& gt)
 		auto currPassCB = mCurrFrameResource->CullPassCB.get();
 		CullPassInfo passInfo;
 		XMStoreFloat4x4(&passInfo.View, XMMatrixTranspose(view));
-		XMStoreFloat4x4(&passInfo.Proj, XMMatrixTranspose(XMLoadFloat4x4(&mProjCull)));
+		XMStoreFloat4x4(&passInfo.Proj, XMMatrixTranspose(proj));
 		passInfo.CommandCount = gNumObjects;
 		currPassCB->CopyData(0, passInfo);
 	}
+
+	if (mRenderState == 1) {
+		//CPU Culling
+		mCpuCullingRenderitems.clear();
+
+		XMMATRIX view = mCamera.GetView();
+		XMMATRIX invView = XMMatrixInverse(&XMMatrixDeterminant(view), view);
+
+		for (int i = 0; i < mOpaqueRenderitems.size(); i++) {
+
+			XMMATRIX world = XMLoadFloat4x4(&mOpaqueRenderitems[i]->World);
+			XMMATRIX invWorld = XMMatrixInverse(&XMMatrixDeterminant(world), world);
+			XMMATRIX viewToLocal = XMMatrixMultiply(invView, invWorld);
+			BoundingFrustum localSpaceFrustum;
+			mCamFrustum.Transform(localSpaceFrustum, viewToLocal);
+
+			if (localSpaceFrustum.Contains(mOpaqueRenderitems[i]->BoundingBox) != DirectX::DISJOINT) {
+				mCpuCullingRenderitems.push_back(mOpaqueRenderitems[i]);
+			}
+		}
+	}
+
+	std::wostringstream outs;
+	std::string text;
+	if (mRenderState == 0) { text = "Culling using CS."; }
+	if (mRenderState == 1) { 
+		text = (std::string)"Culling using CPU.    " + std::to_string(mCpuCullingRenderitems.size()) +
+			" objects visible out of " + std::to_string(mOpaqueRenderitems.size());
+	}
+	if (mRenderState == 2) { text = "No Culling."; }
+	outs << L"Compute Culling: " <<L"    " << text.c_str();
+	mMainWndCaption = outs.str();
 }
 
 void ComputeCull::Draw(const GameTimer& gt)
@@ -281,8 +323,9 @@ void ComputeCull::Draw(const GameTimer& gt)
 	auto cmdListAlloc = mCurrFrameResource->CmdListAlloc;
 	cmdListAlloc->Reset();
 
-	// execute culling cs
-	{
+	if (mRenderState == 0) {
+		// execute culling cs
+
 		mCommandList->Reset(cmdListAlloc.Get(), mPSOs["cull"].Get());
 
 		mCommandList->SetComputeRootSignature(mRootSignatureCull.Get());
@@ -295,10 +338,10 @@ void ComputeCull::Draw(const GameTimer& gt)
 		passCbvHandle.Offset(passCbvIndex, mCbvSrvUavDescriptorSize);
 		mCommandList->SetComputeRootDescriptorTable((UINT)RootParametersCull::PassCbv, passCbvHandle);
 
-		auto objInfoBuffer = mCullObjectBuffer->Resource();
+		auto objInfoBuffer = mCurrFrameResource->CullObjectBuffer->Resource();
 		mCommandList->SetComputeRootShaderResourceView((UINT)RootParametersCull::ObjectInfoSrv, objInfoBuffer->GetGPUVirtualAddress());
 
-		auto commandsBuffer = mCommandsBuffer->Resource();
+		auto commandsBuffer = mCurrFrameResource->CommandsBuffer->Resource();
 		mCommandList->SetComputeRootShaderResourceView((UINT)RootParametersCull::CommandsSrv, commandsBuffer->GetGPUVirtualAddress());
 
 		int outCommandsUavIndex = (UINT)HeapCullOffsets::ProcessedCommandsOffset + (mCurrFrameResourceIndex * (UINT)HeapCullOffsets::Size);
@@ -314,14 +357,16 @@ void ComputeCull::Draw(const GameTimer& gt)
 			D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
 
 		mCommandList->Dispatch(static_cast<UINT>(ceil((float)gNumObjects / float(mComputeThreadBlockSize))), 1, 1);
-
-		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
-			D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST));
 	}
 
 	// draw command
 	{
-		mCommandList->SetPipelineState(mPSOs["opaque"].Get());
+		if (mRenderState == 0) {
+			mCommandList->SetPipelineState(mPSOs["opaque"].Get());
+		}
+		else {
+			mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get());
+		}
 
 		mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
@@ -341,35 +386,55 @@ void ComputeCull::Draw(const GameTimer& gt)
 
 		mCommandList->OMSetRenderTargets(1, &CurrentBackBufferView(), FALSE, &DepthStencilView());
 
+		if (mRenderState == 0) {
 
-		// For each render item... 
-		for (size_t i = 0; i < mOpaqueRenderitems.size(); ++i)
-		{
-			auto ri = mOpaqueRenderitems[i];
+			for (size_t i = 0; i < mOpaqueRenderitems.size(); ++i)
+			{
+				auto ri = mOpaqueRenderitems[i];
 
-			mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
-			mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
-			mCommandList->IASetPrimitiveTopology(ri->PrimitiveType);
+				mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+				mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+				mCommandList->IASetPrimitiveTopology(ri->PrimitiveType);
+			}
+
+			mCommandList->ExecuteIndirect(
+				mCommandSignature.Get(),
+				gNumObjects,
+				mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
+				0,
+				mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
+				mCommandBufferCounterOffset);
 		}
 
-		mCommandList->ExecuteIndirect(
-			mCommandSignature.Get(),
-			gNumObjects,
-			mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
-			0,
-			mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
-			mCommandBufferCounterOffset);
+		else if (mRenderState == 1) {
+			DrawRenderItems(mCommandList.Get(), mCpuCullingRenderitems);
+		}
 
-		//mCommandList->ExecuteIndirect(
-		//	mCommandSignature.Get(),
-		//	gNumObjects,
-		//	mCommandsBuffer->Resource(),
-		//	gNumObjects * sizeof(IndirectCommand) * mCurrFrameResourceIndex,
-		//	nullptr,
-		//	0);
+		else if (mRenderState == 2) {
+
+			DrawRenderItems(mCommandList.Get(), mOpaqueRenderitems);
+
+			//for (size_t i = 0; i < mOpaqueRenderitems.size(); ++i)
+			//{
+			//	auto ri = mOpaqueRenderitems[i];
+
+			//	mCommandList->IASetVertexBuffers(0, 1, &ri->Geo->VertexBufferView());
+			//	mCommandList->IASetIndexBuffer(&ri->Geo->IndexBufferView());
+			//	mCommandList->IASetPrimitiveTopology(ri->PrimitiveType);
+			//}
+
+			//mCommandList->ExecuteIndirect(
+			//	mCommandSignature.Get(),
+			//	gNumObjects,
+			//	mCurrFrameResource->CommandsBuffer->Resource(),
+			//	gNumObjects * sizeof(IndirectCommand) * mCurrFrameResourceIndex,
+			//	nullptr,
+			//	0);
+		}
+
 
 		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(mProcessedCommandBuffers[mCurrFrameResourceIndex].Get(),
-			D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS));
+			D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT, D3D12_RESOURCE_STATE_COPY_DEST));
 		mCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 			D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 	}
@@ -387,14 +452,30 @@ void ComputeCull::Draw(const GameTimer& gt)
 	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 }
 
+void ComputeCull::OnKeyboardInput(const GameTimer& gt)
+{
+	MyApp::OnKeyboardInput(gt);
+
+	if (GetAsyncKeyState('2') & 0x8000) { mRenderState = 0; }
+	if (GetAsyncKeyState('3') & 0x8000) { mRenderState = 1; }
+	if (GetAsyncKeyState('4') & 0x8000) { mRenderState = 2; }
+
+	mCamera.UpdateViewMatrix();
+}
+
+void ComputeCull::OnResize()
+{
+	MyApp::OnResize();
+
+	BoundingFrustum::CreateFromMatrix(mCamFrustum, mCamera.GetProj());
+}
+
 void ComputeCull::BuildFrameResources()
 {
 	for (int i = 0; i < gNumFrame; i++) {
 		mFrameResources.push_back(
 			std::make_unique<FrameResource>(
-				md3dDevice.Get(),
-				1, mAllRenderitems.size()
-				)
+				md3dDevice.Get(), 1, gNumObjects)
 		);
 	};
 }
@@ -502,7 +583,7 @@ void ComputeCull::BuildRenderItems()
 	int objCBIndex = 0;
 	float r = 0;
 	int len = std::cbrt(gNumObjects / 8);
-	int step = 200;
+	int step = 800;
 	for (int x = -len; x < len; x++) {
 		for (int y = -len; y < len; y++) {
 			for (int z = -len; z < len; z++) {
@@ -603,55 +684,10 @@ void ComputeCull::BuildBuffers()
 			md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
 		}
 
-		{
-			mCullObjectBuffer = std::make_unique<UploadBuffer<CullObjectInfo>>(md3dDevice.Get(), gNumObjects * gNumFrame, false);
+		BuildObjectsCullInfo();		
+		BuildCommands();
 
-			for (int frameIndex = 0; frameIndex < gNumFrame; frameIndex++) {
-
-				int heapIndex = (UINT)HeapCullOffsets::ObjectsSrvOffset + (frameIndex * (UINT)HeapCullOffsets::Size);
-				auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mHeapCull->GetCPUDescriptorHandleForHeapStart());
-				handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
-
-				D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-				srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-				srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-				srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-				srvDesc.Buffer.NumElements = gNumObjects;
-				srvDesc.Buffer.StructureByteStride = sizeof(CullObjectInfo);
-				srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-				md3dDevice->CreateShaderResourceView(mCullObjectBuffer->Resource(), &srvDesc, handle);
-			}
-
-			BuildObjectsCullInfo();
-		}
-
-		{
-			mCommandsBuffer = std::make_unique<UploadBuffer<IndirectCommand>>(md3dDevice.Get(), gNumObjects * gNumFrame, false);
-
-			for (int frameIndex = 0; frameIndex < gNumFrame; frameIndex++) {
-
-				int heapIndex = (UINT)HeapCullOffsets::CommandsOffset + (frameIndex * (UINT)HeapCullOffsets::Size);
-				auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mHeapCull->GetCPUDescriptorHandleForHeapStart());
-				handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
-
-				D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-				srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-				srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-				srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-				srvDesc.Buffer.NumElements = gNumObjects;
-				srvDesc.Buffer.StructureByteStride = sizeof(IndirectCommand);
-				srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
-
-				md3dDevice->CreateShaderResourceView(mCommandsBuffer->Resource(), &srvDesc, handle);
-			}
-
-			BuildCommands();
-		}
-
-
-		// gen commands buffer
-
+		// gen output commands buffer
 		for (UINT frame = 0; frame < gNumFrame; frame++)
 		{
 			int heapIndex = (UINT)HeapCullOffsets::ProcessedCommandsOffset + (frame * (UINT)HeapCullOffsets::Size);
@@ -706,15 +742,16 @@ void ComputeCull::BuildBuffers()
 
 void ComputeCull::BuildCommands()
 {
-	std::vector<IndirectCommand> commands;
-	commands.resize(gNumObjects * gNumFrame);
 	
-	UINT commandIndex = 0;
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 
 	for (UINT frame = 0; frame < gNumFrame; frame++)
 	{
+		std::vector<IndirectCommand> commands;
+		commands.resize(gNumObjects * gNumFrame);
+		UINT commandIndex = 0;
+
 		for (UINT i = 0; i < min(gNumObjects, mOpaqueRenderitems.size()); i++)
 		{
 			D3D12_GPU_VIRTUAL_ADDRESS cbvPerObjGpuAddress =
@@ -734,35 +771,31 @@ void ComputeCull::BuildCommands()
 
 			commandIndex++;
 		}
+
+		for (int i = 0; i < commands.size(); i++) {
+			mFrameResources[frame]->CommandsBuffer->CopyData(i, commands[i]);
+		}
 	}
 
-	// Copy data to the intermediate upload heap and then schedule a copy
-	// from the upload heap to the command buffer.
-	const UINT commandBufferSize = gNumObjects * sizeof(IndirectCommand) * gNumFrame + (sizeof(UINT) * gNumFrame);
-
-	D3D12_SUBRESOURCE_DATA commandData = {};
-	commandData.pData = reinterpret_cast<UINT8*>(&commands[0]);
-	commandData.RowPitch = commandBufferSize;
-	commandData.SlicePitch = commandData.RowPitch;
-
-	for (int i = 0; i < commands.size(); i++) {
-		mCommandsBuffer->CopyData(i, commands[i]);
-	}
 }
 
 void ComputeCull::BuildObjectsCullInfo()
 {
-	for (int i = 0; i < min(mOpaqueRenderitems.size(), gNumObjects); i++) {
-		CullObjectInfo objInfo;
-		objInfo.World = mOpaqueRenderitems[i]->World;
+	for (int frame = 0; frame < gNumFrame; frame++) {
+		for (int i = 0; i < min(mOpaqueRenderitems.size(), gNumObjects); i++) {
+			CullObjectInfo objInfo;
 
-		auto float3 = mOpaqueRenderitems[i]->BoundingBox.Center;
-		objInfo.boxCenter = XMFLOAT4(float3.x, float3.y, float3.z, 1.0f);
+			XMMATRIX worldMatrix = XMLoadFloat4x4(&mOpaqueRenderitems[i]->World);
+			XMStoreFloat4x4(&objInfo.World, XMMatrixTranspose(worldMatrix));
 
-		float3 = mOpaqueRenderitems[i]->BoundingBox.Extents;
-		objInfo.boxLen = XMFLOAT4(float3.x, float3.y, float3.z, 1.0f);
+			auto float3 = mOpaqueRenderitems[i]->BoundingBox.Center;
+			objInfo.boxCenter = XMFLOAT4(float3.x, float3.y, float3.z, 1.0f);
 
-		mCullObjectBuffer->CopyData(i, objInfo);
+			float3 = mOpaqueRenderitems[i]->BoundingBox.Extents;
+			objInfo.boxLen = XMFLOAT4(float3.x, float3.y, float3.z, 1.0f);
+
+			mFrameResources[frame]->CullObjectBuffer->CopyData(i, objInfo);
+		}
 	}
 }
 
@@ -816,8 +849,14 @@ void ComputeCull::BuildPSOs()
 void ComputeCull::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 
 	auto objectCB = mCurrFrameResource->ObjectCB->Resource();
+
+	cmdList->SetGraphicsRootConstantBufferView(
+		(UINT)GraphicsRootParameters::CbvPerPass,
+		mCurrFrameResource->PassCB->Resource()->GetGPUVirtualAddress() +
+		(mCurrFrameResourceIndex * passCBByteSize));
 
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i)
