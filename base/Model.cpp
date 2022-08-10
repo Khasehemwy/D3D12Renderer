@@ -45,12 +45,22 @@ void Model::ProcessGeo(
 	UINT indexOffset = 0, vertexOffset = 0;
 	for (auto& meshData : mMeshes) {
 
-		float x[2], y[2], z[2];
+		float x[2] = { 0 };
+		float y[2] = { 0 };
+		float z[2] = { 0 };
+
+		if (meshData.Vertices.size() > 0) {
+			x[0] = x[1] = meshData.Vertices[0].Position.x;
+			y[0] = y[1] = meshData.Vertices[0].Position.y;
+			z[0] = z[1] = meshData.Vertices[0].Position.z;
+		}
+
 		for (size_t i = 0; i < meshData.Vertices.size(); ++i, ++k)
 		{
 			vertices[k] = meshData.Vertices[i];
+
 			x[0] = min(x[0], vertices[k].Position.x);
-			x[1] = max(x[0], vertices[k].Position.x);
+			x[1] = max(x[1], vertices[k].Position.x);
 			y[0] = min(y[0], vertices[k].Position.y);
 			y[1] = max(y[1], vertices[k].Position.y);
 			z[0] = min(z[0], vertices[k].Position.z);
