@@ -13,6 +13,8 @@ The project implements the various rendering effects.
 [PIX](https://devblogs.microsoft.com/pix/download/)。若在`Debug`下运行，需安装`PIX`或注释相应代码。（PIX为截帧工具，方便Debug）  
   
 [Visual Studio 2022](visualstudio.microsoft.com)。VS版本可能会影响模型加载库assimp。
+
+[assimp](https://github.com/assimp/assimp)。模型加载库。
   
   
 ## APP
