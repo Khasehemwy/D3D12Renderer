@@ -109,3 +109,17 @@ Simply draw the box. It shows the project structure.
   
   ***
   
+### ComputeCulling  
+  
+[App_ComputeCulling](./App_ComputeCulling)  
+  
+使用CS进行视锥体剔除，依靠ExecuteIndirect()。 
+  
+<table><tr>
+      <td><image src="https://user-images.githubusercontent.com/57032017/183896582-a19585b2-cf6b-419a-853d-1f910e14f117.gif" width=100% border=0>
+  <p>CS进行剔除，帧率100</p></td>
+      <td><image src="https://user-images.githubusercontent.com/57032017/183896798-a6f54658-d44b-44a8-892e-e876b7898b8f.gif" width=100% border=0>
+  <p>CPU进行剔除，帧率37</p></td>
+      <td><image src="https://user-images.githubusercontent.com/57032017/183896985-cad4a0ac-51fb-4048-aaf8-b52ddfdab8b3.gif" width=100% border=0>
+  <p>无剔除，帧率23</p></td>
+</tr></table> 
