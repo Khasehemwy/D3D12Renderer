@@ -68,7 +68,7 @@ struct IndirectCommand
 	D3D12_GPU_VIRTUAL_ADDRESS cbvPerObj;
 	D3D12_GPU_VIRTUAL_ADDRESS cbvPerPass;
 	D3D12_DRAW_INDEXED_ARGUMENTS drawArguments;
-	UINT pad[3];
+	UINT pad;
 };
 
 struct FrameResource

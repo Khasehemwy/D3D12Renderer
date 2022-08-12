@@ -16,7 +16,7 @@ struct IndirectCommand
     uint startIndexLocation;
     int baseVertexLocation;
     uint startInstanceLocation;
-    uint pad[3];
+    uint pad;
 };
 
 cbuffer RootConstants : register(b0)
