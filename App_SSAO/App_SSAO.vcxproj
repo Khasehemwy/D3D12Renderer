@@ -105,12 +105,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
     <IncludePath>../lib/include/;../base/</IncludePath>
-    <LibraryPath>../lib/;../lib/base;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.19041.0\um\x64;C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.31.31103\lib\onecore\x64;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.19041.0\ucrt\x64\;C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.31.31103\lib\x64\</LibraryPath>
+    <LibraryPath>../lib/;../lib/base;$(WindowsSDK_LibraryPath_x64);$(VC_LibraryPath_VC_x64_OneCore);$(UniversalCRT_LibraryPath_x64);$(VC_LibraryPath_VC_x64)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <IncludePath>../lib/include/;../base/</IncludePath>
-    <LibraryPath>../lib/;../lib/base;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.19041.0\um\x64;C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.31.31103\lib\onecore\x64;C:\Program Files (x86)\Windows Kits\10\Lib\10.0.19041.0\ucrt\x64\;C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.31.31103\lib\x64\</LibraryPath>
+    <LibraryPath>../lib/;../lib/base;$(WindowsSDK_LibraryPath_x64);$(VC_LibraryPath_VC_x64_OneCore);$(UniversalCRT_LibraryPath_x64);$(VC_LibraryPath_VC_x64)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
