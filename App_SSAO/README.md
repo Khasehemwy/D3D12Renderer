@@ -18,7 +18,7 @@ SSAO原理不再赘述，这里主要记录与DX12实现相关的事项。
    
    + 不传入IB、VB，直接使用`mCommandList->DrawInstanced(6, 1, 0, 0);`来绘制屏幕四边形，在Shader中根据SV_VertexID来获取对应顶点。  
    
-   + 主要难点为Shader中SSAO遮蔽值计算时各个坐标系的转换，需要理解View、NDC空间之间的关系。坐标经过Perspective Projection以后，再经过透视除法，即变换到NDC空间，因为该Pass只有屏幕信息，w值（z值）为1，所以经过投影矩阵推导即可以得到，对深度`zView = gProj[3][2] / (zNdc - gProj[2][2])`（Direct3D行主序向量）。然后在平截头体中根据相似三角形和z值，可以得到采样像素点对应在观察空间中的点`p = (zView / pIn.posVNear.z) * pin.posVNear`。现在发现需要posVNear，即采样像素点在平截头体中对应在近平面的点。这里将NDC坐标中的点z值设为0，经过逆投影矩阵后，即可得到点在近平面的位置`posVNear = mul(vout.posH, gInvProj).xyz`。
+   + 主要难点为Shader中SSAO遮蔽值计算时各个坐标系的转换，需要理解View、NDC空间之间的关系。坐标经过Perspective Projection以后，再经过透视除法，即变换到NDC空间，因为该Pass只有屏幕信息，w值（z值）为1，所以经过投影矩阵推导即可以得到，对深度`zView = gProj[3][2] / (zNdc - gProj[2][2])`（HLSL列主序）。然后在平截头体中根据相似三角形和z值，可以得到采样像素点对应在观察空间中的点`p = (zView / pIn.posVNear.z) * pin.posVNear`。现在发现需要posVNear，即采样像素点在平截头体中对应在近平面的点。这里将NDC坐标中的点z值设为0，经过逆投影矩阵后，即可得到点在近平面的位置`posVNear = mul(vout.posH, gInvProj).xyz`。
   
 3. 第三个Pass：对SSAO Map进行模糊  
   
