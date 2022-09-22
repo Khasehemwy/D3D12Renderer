@@ -14,7 +14,7 @@ SSAO原理不再赘述，这里主要记录与DX12实现相关的事项。
   
 2. 第二个Pass：生成SSAO Map  
   
-   + 创建一个RenderTexture作为RandomVectorMap，每个像素代表生成SSAO时，随机采样的向量，数据在CPU端预生成。每帧生成14个Offset数组，作为随机向量的偏移，以保证数据均匀分布（8个立方体角+6个立方体面中心）。  
+   + 创建一个RenderTexture作为RandomVectorMap，每个像素代表生成SSAO时，随机采样的向量，数据在CPU端预生成。每帧生成14个Offset数组，作为随机向量的偏移，以保证数据均匀分布（8个立方体角+6个立方体面中心）。根据随机向量得到的采样点，需要和片元法线判断是否在片元正面（背面采样点不参与计算AO）。  
    
    + 不传入IB、VB，直接使用`mCommandList->DrawInstanced(6, 1, 0, 0);`来绘制屏幕四边形，在Shader中根据SV_VertexID来获取对应顶点。  
    
